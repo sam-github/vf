@@ -1,24 +1,22 @@
 # Makefile:
 # $Id$
-# $Log$
-# Revision 1.1  1999/04/11 01:57:12  sam
-# Initial revision
-#
 
-CXXFLAGS = -w3 -g
+CXXFLAGS = -w2 -g -I.. -T1 # privity 1 to make kernel calls __get_fd,__init_fd
 OFLAGS   = -O
-LDFLAGS  = -M $(CXXFLAGS)
+LDFLAGS  = -M $(CXXFLAGS) -l vf.lib -L..
 
 INC = 
 SRC = $(wildcard *.cc)
-OBJ = 
-EXE = main
-LIB = 
+OBJ = vf_tarfile.o
+EXE = tart vf_tar
+LIB = vf_tar.lib
 DEP = depends.mak
 ALL = $(DEP) $(LIB) $(EXE)
 
 # default target
 all: $(ALL)
+
+# custom targets
 
 # special targets
 $(LIB): $(OBJ)
@@ -41,7 +39,46 @@ clean:
 empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort
 
+# development targets
+
+run: stop vf_tar
+	vf_tar -u -vvv -p dir dir.tar &
+
+noisy: stop vf_tar
+	vf_tar -u -vvvv &
+
+debug: stop vf_tar
+	wd vf_tar -u -vvvv -p dir dir.tar &
+
+stop:
+	-slay -f vf_tar || true
+
+# rule forcing run of usemsg after linking
+%: %.o
+	$(LINK.o) -o $@ $^ $(LDLIBS)
+	-usemsg -c $@ $@.c*
+	chown root $@
+	chmod u+s $@
+	-sort $@.map > $@.map.sort
+
+%: %.c
+	$(LINK.c) -o $@ $< $(LDFLAGS)
+	$(RM) $@.o
+	-usemsg $@ $<
+	chown root $@
+	chmod u+s $@
+
+%: %.cc
+	$(LINK.cc) -o $@ $< $(LDFLAGS)
+	$(RM) $@.o
+	-usemsg $@ $<
+	chown root $@
+	chmod u+s $@
+
 # $Log$
+# Revision 1.2  1999/04/28 03:44:42  sam
+# numerous improvements
+#
 # Revision 1.1  1999/04/11 01:57:12  sam
 # Initial revision
 #
