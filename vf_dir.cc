@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/05 23:54:41  sroberts
+// added support for mkdir(), and a factory class for dir and file entities
+//
 // Revision 1.3  1998/03/19 07:41:25  sroberts
 // implimented dir stat, open, opendir, readdir, rewinddir, close
 //
@@ -15,35 +18,49 @@
 //
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/fsys.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "vf_log.h"
 #include "vf_dir.h"
+#include "vf_file.h"
 
 //
-// VFDirOcb
+// VFDirFactory
 //
 
-VFDirEntity::VFDirEntity() :
-	map_(&Hash)
+VFDirFactory::VFDirFactory(mode_t mode) :
+	mode_(mode)
 {
-	memset(&stat_, 0, sizeof stat_);
+}
 
-	stat_.st_mode = 0555 | S_IFDIR; // r-xr-xr-x and is a directory
-	stat_.st_nlink = 1;
+VFEntity* VFDirFactory::NewDir(_fsys_mkspecial* req)
+{
+	VFEntity* entity = new VFDirEntity(req ? req->mode : mode_, this);
+	if(!entity) { errno = ENOMEM; }
+	return entity;
+}
 
-	stat_.st_ouid = getuid();
-	stat_.st_ogid = getgid();
+VFEntity* VFDirFactory::NewFile(_io_open* req)
+{
+	VFEntity* entity = 0; //new VFFileEntity(req ? req->mode : mode_);
+	if(!entity) { errno = ENOSYS; }
+	return 0;
+}
 
-	stat_.st_ftime =
-	  stat_.st_mtime =
-	    stat_.st_atime =
-	      stat_.st_ctime = time(0);
+//
+// VFDirEntity
+//
 
+VFDirEntity::VFDirEntity(mode_t mode, VFDirFactory* factory) :
+	map_(&Hash),
+	factory_(factory)
+{
+	InitStat(mode);
 }
 
 // need another ctor that takes a stat as an arg
@@ -55,7 +72,7 @@ VFDirEntity::~VFDirEntity()
 
 VFOcb* VFDirEntity::Open(
 	const String& path,
-	_io_open* open,
+	_io_open* req,
 	_io_open_reply* reply)
 {
 	VFLog(2, "VFDirEntity::Open(\"%s\")", (const char *) path);
@@ -74,16 +91,27 @@ VFOcb* VFDirEntity::Open(
 
 	VFEntity* entity = map_[lead];
 
-	if(!entity)
+	// if there is not an entity, perhaps create one
+	if(!entity && factory_ && (req->oflag & O_CREAT))
 	{
-		VFLog(2, "VFDirEntity::Open() failed: no entity");
-		// could create if O_CREAT was spec'd in open flags
-
-		reply->status = ENOENT;
-		return 0;
+		entity = factory_->NewFile(req);
+		if(!entity)
+		{
+			VFLog(2, "VFDirEntity::Open() create failed: %s", strerror(errno));
+			reply->status = errno;
+			return 0;
+		}
 	}
 
-	return entity->Open(tail, open, reply);
+	if(entity)
+	{
+		return entity->Open(tail, req, reply);
+	}
+
+	VFLog(2, "VFDirEntity::Open() failed: no entity");
+
+	reply->status = ENOENT;
+	return 0;
 }
 
 int VFDirEntity::Stat(
@@ -119,12 +147,12 @@ int VFDirEntity::Stat(
 	return entity->Stat(tail, req, reply);
 }
 
-int VFDirEntity::Chdir(
+int VFDirEntity::ChDir(
 	const String& path,
 	_io_open* open,
 	_io_open_reply* reply)
 {
-	VFLog(2, "VFDirEntity::Chdir(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::ChDir(\"%s\")", (const char *) path);
 
 	if(path == "")
 	{
@@ -143,19 +171,52 @@ int VFDirEntity::Chdir(
 
 	if(!entity)
 	{
-		VFLog(2, "VFDirEntity::Chdir() failed: no entity");
+		VFLog(2, "VFDirEntity::ChDir() failed: no entity");
 
 		reply->status = ENOENT;
 		return 0;
 	}
 
-	return entity->Chdir(tail, open, reply);
+	return entity->ChDir(tail, open, reply);
 }
 
 
 int VFDirEntity::Unlink()
 {
 	return 0;
+}
+
+int VFDirEntity::MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply)
+{
+	VFLog(2, "VFDirEntity::MkDir(\"%s\")", (const char *) path);
+
+	if(!factory_)
+	{
+		reply->status = ENOSYS;
+		return sizeof(*reply);
+	}
+	
+	VFEntity* entity = factory_->NewDir(req);
+
+	if(!entity)
+	{
+		reply->status = errno;
+	}
+	else if(!Insert(path, entity))
+	{
+		reply->status = errno;
+	}
+	else
+	{
+		reply->status = EOK;
+	}
+
+	if(reply->status != EOK)
+	{
+		delete entity;
+	}
+
+	return sizeof(*reply);
 }
 
 bool VFDirEntity::Insert(const String& path, VFEntity* entity)
@@ -191,30 +252,15 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 
 	VFEntity* sub = 0;
 
-	// create the subdirectory if we need to
-	if(map_.contains(lead))
+	// find the subdirectory to insert into
+	if(!map_.contains(lead))
 	{
-		sub = map_[lead];
-		assert(sub);
+		errno = ENOENT;
+		return false;
 	}
-	else
-	{
-		sub = new VFDirEntity;
-		if(!sub)
-		{
-			errno = ENOMEM;
-			return false;
-		}
-		int i = map_.entries();
 
-		map_[lead] = sub;
-		index_[i]  = new EntityNamePair(entity, lead);
-
-		stat_.st_size = map_.entries();
-
-		assert(map_[lead] == sub);
-		assert(index_[i]->entity == entity);
-	}
+	sub = map_[lead];
+	assert(sub);
 
 	return sub->Insert(tail, entity);
 }
@@ -239,6 +285,23 @@ void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
 		lead = path(0, sep);
 		tail = path(sep + 1, -1);
 	}
+}
+
+void VFDirEntity::InitStat(mode_t mode)
+{
+	memset(&stat_, 0, sizeof stat_);
+
+	stat_.st_mode = mode | S_IFDIR; // r-xr-xr-x and is a directory
+	stat_.st_nlink = 1;
+
+	stat_.st_ouid = getuid();
+	stat_.st_ogid = getgid();
+
+	stat_.st_ftime =
+	  stat_.st_mtime =
+	    stat_.st_atime =
+	      stat_.st_ctime = time(0);
+
 }
 
 unsigned VFDirEntity::Hash(const String& key)
