@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.11  1999/06/20 10:08:13  sam
 // dev_*() and tc*() messages now recognized.
 //
@@ -164,7 +168,7 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 
 int VFManager::Service(pid_t pid, VFIoMsg* msg)
 {
-	VFLog(3, "VFManager::Service() pid %d request %s (%#x)",
+	VFLog(3, "VFManager::Service() pid %d type %s (%#x)",
 		pid, MessageName(msg->type), msg->type);
 
 	int size = -1;
@@ -201,8 +205,8 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 			} break;
 
 		default:
-			VFLog(1, "unknown msg type IO_HANDLE subtype %#x path \"%s\"",
-				msg->open.oflag, msg->open.path);
+			VFLog(1, "unknown msg type IO_HANDLE subtype %s (%d) path \"%s\"",
+				HandleOflagName(msg->open.oflag), msg->open.oflag, msg->open.path);
 			msg->status = ENOSYS;
 			size = sizeof(msg->status);
 			break;
@@ -331,7 +335,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 //	case _IO_QIOCTL: break;
 
 	default:
-		VFLog(1, "unknown msg type %#x %s", msg->type, MessageName(msg->type));
+		VFLog(1, "unknown msg type %s (%#x)", MessageName(msg->type), msg->type);
 
 		msg->status = ENOSYS;
 		size = sizeof(msg->status);
@@ -450,6 +454,20 @@ static const char* VFManager::MessageName(msg_t type)
 	case 0x0326: return "DEV_RESET";
 
 	default: return "UNKNOWN";
+	}
+}
+
+static const char* VFManager::HandleOflagName(short int oflag)
+{
+	switch(oflag)
+	{
+	case 1:		return "IO_HNDL_INFO";
+	case 2:		return "IO_HNDL_RDDIR";
+	case 3:		return "IO_HNDL_CHANGE";
+	case 4:		return "IO_HNDL_UTIME";
+	case 5:		return "IO_HNDL_LOAD";
+	case 6:		return "IO_HNDL_CLOAD";
+	default:	return "undefined";
 	}
 }
 

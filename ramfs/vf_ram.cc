@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.8  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.7  1999/06/20 10:04:16  sam
 // dir entity's factory now abstract and more modular
 //
@@ -65,36 +69,24 @@ is primarily a test of the virtual filesystem framework.
 #endif
 
 //
-// VFRamEntiryFactory
+// VFRamEntityFactory
 //
 
 class VFRamEntityFactory : public VFEntityFactory
 {
 public:
-	VFRamEntityFactory(mode_t mode);
-	VFEntity* NewDir();
-	VFEntity* NewSpecial(_fsys_mkspecial* req = 0);
-	VFEntity* NewFile(_io_open* req = 0);
-
-protected:
-	mode_t mode_;
+	VFEntity* NewSpecial(_fsys_mkspecial* req);
+	VFEntity* NewFile(_io_open* req);
 };
-
-VFRamEntityFactory::VFRamEntityFactory(mode_t mode) : mode_(mode)
-{
-}
-
-VFEntity* VFRamEntityFactory::NewDir()
-{
-	return NewSpecial();
-}
 
 VFEntity* VFRamEntityFactory::NewSpecial(_fsys_mkspecial* req)
 {
 	VFEntity* entity = 0;
 
-	if(!req || S_ISDIR(req->mode)) {
-		entity = new VFDirEntity(mode_, -1, -1, this);
+	assert(req);
+
+	if(S_ISDIR(req->mode)) {
+		entity = new VFDirEntity(req->mode, -1, -1, this);
 	} else if(S_ISLNK(req->mode)) {
 		const char* pname = &req->path[0] + PATH_MAX + 1;
 		entity = new VFSymLinkEntity(pname);
@@ -110,7 +102,7 @@ VFEntity* VFRamEntityFactory::NewSpecial(_fsys_mkspecial* req)
 
 VFEntity* VFRamEntityFactory::NewFile(_io_open* req)
 {
-	VFEntity* entity = new VFRamFileEntity(req ? req->mode : mode_ | 0666);
+	VFEntity* entity = new VFRamFileEntity(req->mode);
 	if(!entity) { errno = ENOMEM; }
 	return entity;
 }
@@ -156,11 +148,9 @@ int main(int argc, char* argv[])
 {
 	GetOpts(argc, argv);
 
-	VFEntityFactory* factory = new VFRamEntityFactory(0555);
+	VFEntity* root = new VFDirEntity(0555, -1, -1, new VFRamEntityFactory);
 
-	VFEntity* dir = factory->NewDir();
-
-	if(!vfmgr->Init(dir, pathOpt, vOpt))
+	if(!vfmgr->Init(root, pathOpt, vOpt))
 	{
 		printf("VFManager init failed: [%d] %s\n",
 			errno, strerror(errno)

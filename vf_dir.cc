@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.12  1999/06/20 10:04:16  sam
 // dir entity's factory now abstract and more modular
 //
@@ -110,8 +114,7 @@ VFOcb* VFDirEntity::Open(
 	String tail;
 	SplitPath(path, lead, tail);
 
-	VFEntity* entity = 0;
-	if(map_.contains(lead)) { entity = map_[lead]; }
+	VFEntity* entity = map_.find(lead);
 
 	// if there is not an entity, perhaps create one
 	if(!entity && tail == "" && factory_ && (req->oflag & O_CREAT))
@@ -159,14 +162,14 @@ int VFDirEntity::Stat(
 	SplitPath(path, lead, tail);
 
 
-	if(!map_.contains(lead))
+	VFEntity* entity = map_.find(lead);
+	if(!entity)
 	{
 		VFLog(2, "VFDirEntity::Stat() failed: no entity");
 		reply->status = ENOENT;
 		return sizeof(reply->status);
 	}
 
-	VFEntity* entity = map_[lead];
 	return entity->Stat(tail, req, reply);
 }
 
@@ -190,7 +193,7 @@ int VFDirEntity::ChDir(
 	String tail;
 	SplitPath(path, lead, tail);
 
-	VFEntity* entity = map_[lead];
+	VFEntity* entity = map_.find(lead);
 
 	if(!entity)
 	{
@@ -212,9 +215,33 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 {
 	VFLog(2, "VFDirEntity::MkSpecial(\"%s\")", (const char *) path);
 
+	if(path == "")
+	{
+		reply->status = ENOENT;	// so it is written in creat(3)
+		return 0;
+	}
+
+	// recurse down to directory where special is to be made
+	String lead;
+	String tail;
+	SplitPath(path, lead, tail);
+
+	if(tail != "")
+	{
+		VFEntity* entity = map_.find(lead);
+
+		if(!entity)
+		{
+			reply->status = ENOENT;
+			return 0;
+		}
+		return entity->MkSpecial(tail, req, reply);
+	}
+
+	// this is where special is to be made
 	if(!factory_)
 	{
-		reply->status = ENOSYS;
+		reply->status = ENOTSUP;
 		return 0;
 	}
 	
@@ -224,7 +251,7 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 	{
 		reply->status = errno;
 	}
-	else if(!Insert(path, entity))
+	else if(!Insert(lead, entity))
 	{
 		reply->status = errno;
 	}
@@ -262,7 +289,7 @@ int VFDirEntity::ReadLink(
 	String tail;
 	SplitPath(path, lead, tail);
 
-	VFEntity* entity = map_[lead];
+	VFEntity* entity = map_.find(lead);
 
 	if(!entity)
 	{
@@ -278,6 +305,9 @@ int VFDirEntity::ReadLink(
 bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 {
 	VFLog(2, "VFDirEntity::Insert(\"%s\")", (const char *) path);
+
+	assert(path != "");
+	assert(entity);
 
 	String lead;
 	String tail;
@@ -309,10 +339,10 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 
 	VFEntity* sub = 0;
 
-	// create the subdirectory to insert into, if necessary and possible
+	// auto-create the subdirectory to insert into, if necessary and possible
 	if(!map_.contains(lead) && factory_)
 	{
-		sub = factory_->NewDir();
+		sub = factory_->AutoCreateDirectory();
 
 		if(sub && !Insert(lead, sub)) {
 			delete sub;
@@ -321,7 +351,7 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 	}
 
 	// find the subdirectory to insert into
-	sub = map_[lead];
+	sub = map_.find(lead);
 	if(!sub) {
 		errno = ENOENT;
 		return false;
@@ -355,6 +385,9 @@ void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
 void VFDirEntity::InitStat(mode_t mode, uid_t uid, gid_t gid)
 {
 	memset(&stat_, 0, sizeof stat_);
+
+	// stip type info from mode
+	mode &= 0777;
 
 	stat_.st_mode = mode | S_IFDIR;
 	stat_.st_nlink = 1;
@@ -453,7 +486,6 @@ int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 	reply->zero[2] = 0;
 	reply->zero[3] = 0;
 	reply->zero[4] = 0;
-
 
 	if(readIndex_ == entries)
 	{

@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.9  1999/06/20 10:05:19  sam
 // fixed buffer overflow problems with large files and verbose debug messages
 //
@@ -197,6 +201,9 @@ int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 void VFFileEntity::InitStat(mode_t mode)
 {
 	memset(&stat_, 0, sizeof stat_);
+
+	// clear all but permission bits from mode
+	mode &= 0777;
 
 	stat_.st_mode = mode | S_IFREG;
 	stat_.st_nlink = 1;

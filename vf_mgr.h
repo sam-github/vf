@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.9  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -136,6 +140,7 @@ public:
 	void Run();
 
 	static const char* MessageName(msg_t type);
+	static const char* HandleOflagName(short int oflag);
 
 private:
 	VFOcbMap* ocbMap_;

@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/06/20 13:42:20  sam
+// Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
+// fixed problem with modes on newly created files, cut some confusion away.
+//
 // Revision 1.9  1999/06/20 10:04:16  sam
 // dir entity's factory now abstract and more modular
 //
@@ -63,7 +67,7 @@
 class VFEntityFactory
 {
 public:
-	virtual VFEntity* NewDir()
+	virtual VFEntity* AutoCreateDirectory()
 	{
 		return ENotSup();
 	}
@@ -120,7 +124,21 @@ private:
 		String name;
 	};
 
-	typedef WCValHashDict<String, VFEntity*> EntityMap;
+	// Define our wrapper to avoid op[] adding null entries to the map,
+	// and so that we have a find that behaves the way I want.
+	class EntityMap : public WCValHashDict<String, VFEntity*>
+	{
+		public:
+			EntityMap(unsigned (*hashfn)(const String&)) :
+				WCValHashDict<String,VFEntity*>(hashfn)
+			{}
+			VFEntity* find(const String& name) const
+			{
+				VFEntity* entity = 0;
+				WCValHashDict<String,VFEntity*>::find(name, entity);
+				return entity;
+			}
+	};
 	typedef WCPtrVector<EntityNamePair> EntityIndex;
 
 	EntityMap   map_;
