@@ -1,3 +1,5 @@
+* Rewrite release target.
+
 * The ocb map could store a pointer to a OcbMapNode object that had the
 reference counting stuff in it, leaving the Ocb pure abstract. this makes
 sense, since the ocb doesn't need this stuff, it's an interface that
@@ -31,4 +33,11 @@ into generic/file specific/dir specific.
 * MkSpecial() is wrong, it should push the creation request down through
 the subdirs, allowing subdirs to handle their own entity creation, as they
 should.
+
+* Manager::Run() should return on rmdir/normal exit to allow cleanup, way
+  more obvious than ~dtor magic.
+
+* Do the work so that the VF can support execution.
+
+* Make RAM filesystem (optionally?) do double/quatering memory allocation.
 
