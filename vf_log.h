@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/09/27 02:54:27  sam
+// made some abortive attempts to make setting up verbosity and string a
+// little easier.
+//
 // Revision 1.2  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -32,6 +36,12 @@
 
 void VFLog (int level, const char* format, ...);
 void VFLevel (const char* tag, int level);
+
+#define	VFERR(E) (E), strerror(E)
+#define	VFERRF "[%d] %s"
+
+const char* VFGetTag();
+int VFGetLevel();
 
 #endif
 
