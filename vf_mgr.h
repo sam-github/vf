@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/08/03 05:10:54  sam
+// *** empty log message ***
+//
 // Revision 1.11  1999/06/21 12:36:22  sam
 // implemented sysmsg... version
 //
@@ -177,7 +180,7 @@ public:
 
 	Init(VFEntity *root, const char* mount, int verbosity = 1);
 
-	int Service(pid_t pid, VFIoMsg* msg);
+	virtual int Service(pid_t pid, VFIoMsg* msg);
 
 	void Run();
 
