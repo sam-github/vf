@@ -32,10 +32,10 @@ $(DEP): $(SRC) $(INC)
 	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
 
 clean:
-	rm -f *.o *.err core *.dmp *.map
+	rm -f *.o *.err core *.dmp
 
 empty: clean
-	rm -f $(ALL)
+	rm -f $(ALL) *.dbg *.map *.map.sort
 
 export: all
 
@@ -73,6 +73,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.6  1998/04/06 06:50:55  sroberts
+# added .map.sort to files to be emptied
+#
 # Revision 1.5  1998/04/05 17:35:52  sroberts
 # added debug target
 #
