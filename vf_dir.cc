@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/06/21 10:28:20  sam
+// fixed bug causing random return status of unsupported functions
+//
 // Revision 1.13  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -200,7 +203,7 @@ int VFDirEntity::ChDir(
 		VFLog(2, "VFDirEntity::ChDir() failed: no entity");
 
 		reply->status = ENOENT;
-		return 0;
+		return sizeof(reply->status);
 	}
 
 	return entity->ChDir(tail, open, reply);
@@ -218,7 +221,7 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 	if(path == "")
 	{
 		reply->status = ENOENT;	// so it is written in creat(3)
-		return 0;
+		return sizeof(reply->status);
 	}
 
 	// recurse down to directory where special is to be made
@@ -233,7 +236,7 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 		if(!entity)
 		{
 			reply->status = ENOENT;
-			return 0;
+			return sizeof(reply->status);
 		}
 		return entity->MkSpecial(tail, req, reply);
 	}
@@ -242,7 +245,7 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 	if(!factory_)
 	{
 		reply->status = ENOTSUP;
-		return 0;
+		return sizeof(reply->status);
 	}
 	
 	VFEntity* entity = factory_->NewSpecial(req);
@@ -296,7 +299,7 @@ int VFDirEntity::ReadLink(
 		VFLog(2, "VFDirEntity::ReadLink() failed: no entity");
 
 		reply->status = ENOENT;
-		return 0;
+		return sizeof(reply->status);
 	}
 
 	return entity->ReadLink(tail, req, reply);

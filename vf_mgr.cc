@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/06/21 10:28:20  sam
+// fixed bug causing random return status of unsupported functions
+//
 // Revision 1.12  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -173,7 +176,11 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 
 	int size = -1;
 
-	switch(msg->type)
+	msg_t type = msg->type;
+
+	msg->status = ENOTSUP;
+
+	switch(type)
 	{
 	case _IO_STAT:
 		size = root_->Stat(msg->open.path, &msg->open, &msg->fstat_reply);
@@ -300,7 +307,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 			break;
 		}
 
-		switch(msg->type)
+		switch(type)
 		{
 		case _IO_FSTAT:
 			size = ocb->Stat(pid, &msg->fstat, &msg->fstat_reply);
@@ -335,7 +342,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 //	case _IO_QIOCTL: break;
 
 	default:
-		VFLog(1, "unknown msg type %s (%#x)", MessageName(msg->type), msg->type);
+		VFLog(1, "unknown msg type %s (%#x)", MessageName(type), type);
 
 		msg->status = ENOSYS;
 		size = sizeof(msg->status);
@@ -344,6 +351,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 	} // end switch(msg->type)
 
 	// returning 0 is allowed, its an ok way of saying just return the default
+	assert(size >= 0); // we should never see a -1 here...
 	if(size <= 0) {
 		size = sizeof(msg->status);
 	}
