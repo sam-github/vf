@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/05 23:54:00  sroberts
+// added mkdir() support
+//
 // Revision 1.3  1998/03/19 07:41:25  sroberts
 // implimented dir stat, open, opendir, readdir, rewinddir, close
 //
@@ -21,6 +24,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/fsys_msg.h>
 #include <sys/io_msg.h>
 #include <string.hpp>
 
@@ -43,8 +47,9 @@ public:
 
 	virtual VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply) = 0;
 	virtual int Stat(const String& path, _io_open* req, _io_fstat_reply* reply) = 0;
-	virtual int Chdir(const String& path, _io_open* req, _io_open_reply* reply) = 0;
+	virtual int ChDir(const String& path, _io_open* req, _io_open_reply* reply) = 0;
 	virtual int Unlink() = 0;
+	virtual int MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply) = 0;
 
 	virtual bool Insert(const String& path, VFEntity* entity) = 0;
 	virtual struct stat* Stat() = 0;
@@ -73,7 +78,6 @@ private:
 	void Unfer() { refCount_--; if(refCount_ <= 0) delete this; }
 	int refCount_;
 };
-
 
 #endif
 

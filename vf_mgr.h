@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/04/05 23:51:21  sroberts
+// added mkdir() support
+//
 // Revision 1.2  1998/03/19 07:41:25  sroberts
 // implimented dir stat, open, opendir, readdir, rewinddir, close
 //
@@ -25,22 +28,25 @@ union VFIoMsg
 	msg_t	type;
 	msg_t	status;
 
-	struct _io_open 			open;
-	struct _io_open_reply 		open_reply;
+	struct _io_open 				open;
+	struct _io_open_reply 			open_reply;
 
-	struct _io_fstat_reply		fstat_reply;
+	struct _io_fstat_reply			fstat_reply;
 
-	struct _io_readdir 			readdir;
-	struct _io_readdir_reply 	readdir_reply;
+	struct _io_readdir 				readdir;
+	struct _io_readdir_reply	 	readdir_reply;
 
-	struct _io_close 			close;
-	struct _io_close_reply 		close_reply;
+	struct _io_close 				close;
+	struct _io_close_reply 			close_reply;
 
-	//struct _io_read 			read;
+	struct _fsys_mkspecial			mkdir;
+	struct _fsys_mkspecial_reply	mkdir_reply;
+
+	//struct _io_read 				read;
 	//struct _io_read_reply 		read;
-	//struct _io_write 			write;
+	//struct _io_write 				write;
 	//struct _io_write_reply 		write;
-	//struct _io_lseek 			lseek;
+	//struct _io_lseek 				lseek;
 	//struct _io_lseek_reply 		lseek;
 	//struct _io_config 			
 	//struct _io_config_reply 			
