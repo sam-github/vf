@@ -1,5 +1,15 @@
+* vf_pop is exiting at cogent on a many megabyte mailbox, with +100 msgs,
+  when I "grep hello *" in it, then do a "ls -l" at the same time. Also seems
+  to prevent the server ever spawning a pop daemon again, unaccountably.
+
+* spawn child to do the download, so syscalls on already downloaded info
+  can return while the child is downloading a message.
+
+* parse the 'stat' message instead of stating individual messages, should
+ be faster!
 
 * use top to get from/subject, and respond to readlink with this info?
+  QNX's pop daemon has XTND XLST.
 
 * permissions checks are important here, but still missing from framework
 
