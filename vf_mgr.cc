@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.20  1999/11/25 04:19:26  sam
+// use umount not rmdir to exit the filesystem now
+//
 // Revision 1.19  1999/10/17 16:20:56  sam
 // Added support for umount().
 //
@@ -309,15 +312,9 @@ int VFManager::Service(pid_t pid, VFMsg* msg)
 					msg->mkspec.path + PATH_MAX + 1);
 		break;
 
-	case _FSYS_UMOUNT:
-	case _FSYS_REMOVE: {
-		// not supported by entites yet, only accept if directed to top-level
+	case _FSYS_UMOUNT: {
 		if(msg->remove.path[0] != '\0') {
-			switch(msg->type)
-			{
-				case _FSYS_UMOUNT: status = EINVAL; break;
-				case _FSYS_REMOVE: status = ENOTSUP; break;
-			}
+			status = EINVAL;
 			break;
 		}
 
@@ -325,7 +322,7 @@ int VFManager::Service(pid_t pid, VFMsg* msg)
 		msg->status = EOK;
 		ReplyMsg(pid, msg, sizeof(msg->status));
 
-		VFLog(2, "remove - exiting vfsys manager");
+		VFLog(2, "umount - exiting vfsys manager");
 		exit(0);
 
 		} break;
