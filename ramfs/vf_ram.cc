@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/11/25 04:27:18  sam
+// now integrates with mount command, when called mount_ram
+//
 // Revision 1.12  1999/10/04 03:33:52  sam
 // forking is now done by the manager
 //
@@ -71,15 +74,14 @@
 #include "vf_log.h"
 
 #ifdef __USAGE
-%C - an in-memory virtual filesystem
+%C - mounts an in-memory virtual filesystem
 
-usage: vf_ram [-hv] [-p vf]
+usage: vf_ram [-hvd] [vf]
     -h   print help message
     -v   increase the verbosity level
-    -p   path of virtual file system to create
     -d   debug, don't fork into the background
 
-Mounts a RAM filesystem at 'vf'.
+Mounts a RAM filesystem at 'vf' (the default is "ram").
 
 This is primarily a test of the virtual filesystem framework. Currently
 some basic filesystem operations such as execute, rename, and unlink,
@@ -251,7 +253,7 @@ int		debugOpt = 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:d")) != -1; )
+	for(int c; (c = getopt(argc, argv, "hvdt:")) != -1; )
 	{
 		switch(c)
 		{
@@ -263,18 +265,19 @@ int GetOpts(int argc, char* argv[])
 			vOpt++;
 			break;
 
-		case 'p':
-			pathOpt = optarg;
-			break;
-
 		case 'd':
 			debugOpt = 1;
+			break;
+
+		case 't': // ignore this, it's passed by 'mount'
 			break;
 
 		default:
 			exit(1);
 		}
 	}
+
+	pathOpt = argv[optind] ? argv[optind] : pathOpt;
 
 	return 0;
 }
