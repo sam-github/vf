@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.8  1999/06/20 13:37:13  sam
+// factory interface changed
+//
 // Revision 1.7  1999/06/18 17:03:36  sam
 // implemented new entity factory for tar
 //
@@ -95,7 +98,7 @@ and naming the virtual filesystem path after that leading element.
 class VFTarEntityFactory : public VFEntityFactory
 {
 public:
-	VFEntity* NewDir()
+	VFEntity* AutoCreateDirectory()
 	{
 		VFEntity* entity = new VFDirEntity(0555, -1, -1, this);
 
