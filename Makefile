@@ -15,7 +15,7 @@ INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
 OBJ = vf_mgr.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
 EXE = vf_ram
-VF	= tarfs popfs
+VF	= ramfs tarfs popfs
 LIB = vf.lib
 DOC = vf.txt vf.html
 DEP = depends.mak
@@ -24,14 +24,14 @@ ALL = $(LIB) $(EXE) $(DOC)
 # default targets
 .PHONY: all vf deps
 
-default: all vf
-
 all: $(ALL)
 
 docs: $(DOC)
 
-vf: $(LIB)
+vfs: $(LIB)
 	for d in $(VF); do $(MAKE) -C $$d; done
+
+build: all vfs
 
 # special targets
 
@@ -129,6 +129,9 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.15  1999/08/03 06:13:38  sam
+# moved ram filesystem into its own subdirectory
+#
 # Revision 1.14  1999/07/21 13:42:38  sam
 # fixing the URLs output by pod2html, and usemsg was missing -c option
 #

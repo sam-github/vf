@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/08/03 06:13:38  sam
+// moved ram filesystem into its own subdirectory
+//
 // Revision 1.8  1999/07/11 11:26:46  sam
 // Added arg to init stat to a particular type, defaults to reg file.
 //
@@ -97,22 +100,6 @@ private:
 	VFFileEntity* file_;
 
 	off_t offset_;
-};
-
-class VFRamFileEntity : public VFFileEntity
-{
-public:
-	VFRamFileEntity(mode_t mode);
-	~VFRamFileEntity();
-
-	int Write(pid_t pid, size_t nbytes, off_t offset);
-	int Read(pid_t pid, size_t nbytes, off_t offset);
-
-private:
-	char* data_; // pointer to buffer
-	off_t dataLen_;  // length of data buffer
-	off_t fileSize_; // size of file data (may be less than dataLen_)
-
 };
 
 #endif

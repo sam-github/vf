@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/08/03 06:14:55  sam
+// moved ram filesystem into its own subdirectory
+//
 // Revision 1.9  1999/06/21 12:37:27  sam
 // implemented sysmsg... version
 //
@@ -53,11 +56,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/kernel.h>
 
 #include "vf_mgr.h"
-#include "vf_dir.h"
 #include "vf_file.h"
+#include "vf_dir.h"
 #include "vf_syml.h"
+#include "vf_log.h"
 
 #ifdef __USAGE
 %C - an in-memory virtual filesystem
@@ -70,6 +75,117 @@ usage: vf_ram [-hv] [-p vf]
 Mounts a RAM filesystem at 'vf'. It is intended to be fully functional, but
 is primarily a test of the virtual filesystem framework.
 #endif
+
+//
+// VFRamFileEntity
+//
+
+class VFRamFileEntity : public VFFileEntity
+{
+public:
+	VFRamFileEntity(mode_t mode);
+	~VFRamFileEntity();
+
+	int Write(pid_t pid, size_t nbytes, off_t offset);
+	int Read(pid_t pid, size_t nbytes, off_t offset);
+
+private:
+	char* data_; // pointer to buffer
+	off_t dataLen_;  // length of data buffer
+	off_t fileSize_; // size of file data (may be less than dataLen_)
+
+};
+
+VFRamFileEntity::VFRamFileEntity(mode_t mode) :
+	data_	(0),
+	dataLen_	(0),
+	fileSize_	(0)
+{
+	InitStat(mode);
+}
+
+VFRamFileEntity::~VFRamFileEntity()
+{
+	VFLog(3, "VFDirEntity::~VFRamFileEntity()");
+
+	free(data_);
+}
+
+int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "VFRamFileEntity::Write() size %ld, offset %ld len %ld size %ld",
+		nbytes, offset, dataLen_, fileSize_);
+
+	// grow the buffer if possible/necessary
+	if(offset + nbytes > dataLen_)
+	{
+		// for fast writes I should always allocate 2*dataLen_, and
+		// unallocate when fileSize_ is < dataLen_/4, for now I use the more
+		// memory conservative approach
+		char* b = (char*) realloc(data_, offset + nbytes);
+		if(b) { data_ = b; dataLen_ = offset + nbytes; }
+	}
+	// see if we can read any data into available space
+	if(offset >= dataLen_)
+	{
+		errno = ENOSPC;
+		return -1;
+	}
+	if(offset > fileSize_)
+	{
+		// offset past end of file, so zero data up to write point
+		memset(&data_[fileSize_], 0, offset - fileSize_);
+	}
+	if(dataLen_ - offset < nbytes)
+	{
+		// we can only partially fulfill the write request
+		nbytes = dataLen_ - offset;
+	}
+
+	// ready to read nbytes into the data buffer from the offset of the
+	// "data" part of the write message
+	size_t dataOffset = offsetof(struct _io_write, data);
+	unsigned ret = Readmsg(pid, dataOffset, &data_[offset], nbytes);
+
+	if(ret != -1)
+	{
+		VFLog(5, "VFRamFileEntity::Write() wrote \"%.*s\"",
+			__max(ret, 20),
+			&data_[offset]);
+
+		// update sizes if end of write is past current size
+		off_t end = offset + ret;
+		if(end > fileSize_) { fileSize_ = stat_.st_size = end; }
+	}
+
+	return ret;
+}
+
+int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "VFRamFileEntity::Read() size %ld, offset %ld len %ld size %ld",
+		nbytes, offset, dataLen_, fileSize_);
+
+	// adjust nbytes if the read would be past the end of file
+	if(offset > fileSize_) {
+			nbytes = 0;
+	} else if(offset + nbytes > fileSize_) {
+		nbytes = fileSize_ - offset;
+	}
+
+	// ready to write nbytes from the data buffer to the offset of the
+	// "data" part of the read reply message
+	size_t dataOffset = offsetof(struct _io_read_reply, data);
+	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
+
+	if(ret != -1) {
+		VFLog(5, "VFRamFileEntity::Read() read \"%.*s\"",
+			__max(ret, 20),
+			&data_[offset]);
+	}
+
+	return ret;
+}
 
 //
 // VFRamEntityFactory
@@ -116,7 +232,6 @@ VFEntity* VFRamEntityFactory::NewFile(_io_open* req)
 
 int		vOpt = 0;
 char*	pathOpt = "ram";
-
 
 int GetOpts(int argc, char* argv[])
 {
