@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/07/02 15:26:28  sam
+// simple bug causing segvs for tar members with absolute ("/...") paths fixed
+//
 // Revision 1.10  1999/06/21 13:49:03  sam
 // now becomes a daemon, and can elide a leading directory path
 //
@@ -266,7 +269,7 @@ void main(int argc, char* argv[])
 
 				VFEntity* entity = VFTarEntityCreate(it);
 
-				if(entity && !root->Insert(it.Path(), entity)) {
+				if(entity && !root->Insert(p, entity)) {
 					VFLog(0, "inserting %s failed: [%d] %s",
 						it.Path(), errno, strerror(errno));
 					exit(1);
