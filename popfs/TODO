@@ -1,6 +1,7 @@
 * vf_pop is exiting at cogent on a many megabyte mailbox, with +100 msgs,
   when I "grep hello *" in it, then do a "ls -l" at the same time. Also seems
   to prevent the server ever spawning a pop daemon again, unaccountably.
+  -> I think this was fixed by multi-threading the manager.
 
 * parse the 'stat' message instead of stating individual messages, should
  be faster!
