@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.15  1999/11/25 04:20:19  sam
+// can now be called as mount_pop by the mount utility
+//
 // Revision 1.14  1999/10/04 03:34:21  sam
 // forking is now done by the manager
 //
@@ -369,25 +372,25 @@ static void VFPop::SigHandler(int signo)
 //
 
 #ifdef __USAGE
-%C - a POP3 virtual filesystem
+%C - mounts a pop3 virtual filesystem
 
-usage: vf_pop3 [-hv] [-p vf] user[:passwd]@hostname
+usage: vf_pop [-hvd] user[:passwd]@hostname [vf]
     -h   Print this message and exit.
     -v   Increase the verbosity level, default is 0.
-    -p   Path to place virtual file system at, default is './user@hostname'.
+    -d   Don't become a daemon, default is to fork into the background after
+         prompting for a password (if necessary).
     -m   Buffer read mail messages in memory, default is in a temp file
          opened in /tmp with perms 0600 and immediately unlinked after
          being opened.
-    -d   Don't become a daemon, default is to fork into the background after
-         prompting for a password (if necessary).
 
-Mounts the specified pop3 account as a virtual filesystem at 'vf'.
+Mounts the specified pop3 account as a virtual filesystem at 'vf', the
+default is "./user@hostname".
 
-The 'passwd' parameter is only optionally specified on the command line,
-probably shouldn't be for security reasons, and will be prompted for if not
+The 'passwd' parameter is optional, probably shouldn't be specified on
+the command line (for security reasons), and will be prompted for if not
 supplied.
 
-Doing a rmdir on the path 'vf' will cause vf_pop to exit.
+Doing a 'rmdir' or 'umount' on the path 'vf' will cause vf_pop to exit.
 #endif
 
 int		vOpt		= 0;
@@ -401,7 +404,7 @@ int		dOpt		= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:md")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvdmt:")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -412,16 +415,15 @@ int GetOpts(int argc, char* argv[])
 			VFLevel("vf_pop3", vOpt);
 			break;
 
-		case 'p':
-			pathOpt = optarg;
+		case 'd':
+			dOpt = 1;
 			break;
 
 		case 'm':
 			inmemOpt = 1;
 			break;
 
-		case 'd':
-			dOpt = 1;
+		case 't':	// ignore this option, its passed by 'mount'
 			break;
 
 		default:
@@ -429,7 +431,7 @@ int GetOpts(int argc, char* argv[])
 		}
 	}
 
-	if(!(accountOpt = argv[optind])) {
+	if(!(accountOpt = argv[optind++])) {
 		fprintf(stderr, "no account specified (try -h for help)!\n");
 		exit(1);
 	}
@@ -445,7 +447,9 @@ int GetOpts(int argc, char* argv[])
 
 	assert(passOpt);
 
-	if(!pathOpt) {
+	if(argv[optind]) {
+		pathOpt = argv[optind];
+	} else {
 		ostrstream os;
 
 		os << userOpt << "@" << hostOpt << '\0';
