@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.8  1999/04/11 06:40:55  sam
+// cleaned up code to stop unused arg warnings
+//
 // Revision 1.7  1998/04/28 07:25:22  sroberts
 // added fd number to diagnostic output
 //
@@ -58,7 +61,7 @@ VFEntity* VFDirFactory::NewDir(_fsys_mkspecial* req)
 
 VFEntity* VFDirFactory::NewFile(_io_open* req)
 {
-	VFEntity* entity = new VFFileEntity(req ? req->mode : mode_);
+	VFEntity* entity = new VFRamFileEntity(req ? req->mode : mode_);
 	if(!entity) { errno = ENOSYS; }
 	return entity;
 }
@@ -356,6 +359,8 @@ int VFDirOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
 
 int VFDirOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
 {
+	pid = pid, req = req, reply = reply;
+
 	return 0;
 }
 
@@ -386,7 +391,7 @@ int VFDirOcb::Chown()
 
 int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 {
-	pid = pid;
+	pid = pid, req = req;
 
 	int entries = dir_->map_.entries();
 
@@ -424,7 +429,7 @@ int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 
 int VFDirOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
 {
-	pid = pid;
+	pid = pid, req = req, reply = reply;
 
 	VFLog(2, "VFDirOcb::RewindDir()");
 
