@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/06/21 13:49:03  sam
+// now becomes a daemon, and can elide a leading directory path
+//
 // Revision 1.9  1999/06/21 12:41:08  sam
 // implemented sysmsg... version
 //
@@ -55,6 +58,8 @@
 #include <pwd.h>
 #include <grp.h>
 
+#include <strstream.h>
+
 #include <vf_mgr.h>
 #include <vf_dir.h>
 #include <vf_syml.h>
@@ -67,12 +72,16 @@
 %C - a tar archive virtual filesystem
 
 usage: vf_tar [-hv] [-p vf] tarfile
-    -h   print help message
-    -v   increse the verbosity level
-    -p   path of virtual file system to create, default is the base
-         name of the file, without any extension
-    -u   attempt to use the user and group of the tar archive member to find
-         the local uid and gid
+    -h   Print this helpful message.
+    -v   Increase the verbosity level.
+    -p   Path of virtual file system to create, default is the base
+         name of the file, without any extension.
+    -u   Attempt to use the user and group of the tar archive member to find
+         the local uid and gid.
+    -e   Elide top-level directory if there is only one and use that name as
+         the path 'vf' if the -p option was not specified.
+    -d   Don't become a daemon, default is to fork into the background after
+         reading the tar file.
 
 Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'. It can be
 unmounted by doing a rmdir on the vfsys path (causing vf_tar to exit).
@@ -82,6 +91,7 @@ current behaviour is:
 
   - for archive members the leading slash, if present, is stripped, before
     placing the member in the virtual filesystem,
+
   - for archived symbolic links to absolute paths, the target path of the
     symbolic link is left as it is.
 
@@ -89,9 +99,10 @@ In the second case, the archive could be searched for a member matching the
 target path, and if present the symbolic link could be adjusted to refer to
 that member.
 
-I've also considered dealing with the common case of archived sub-directories,
-such as "yoyo-widgets-1.3.4/..." by stripping the common leading path element,
-and naming the virtual filesystem path after that leading element.
+The -e option is an attempt at dealing with the common case of archived
+sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
+leading path element out, and naming the virtual filesystem path after
+that leading element.
 #endif
 
 //
@@ -119,7 +130,9 @@ public:
 int		vOpt	= 0;
 char*	pathOpt	= 0;
 int		uOpt	= 0;
+int		eOpt	= 0;
 char*	tarOpt	= 0;
+int		dOpt	= 0;
 
 int Depth(const char* p)
 {
@@ -169,7 +182,7 @@ VFEntity* VFTarEntityCreate(TarArchive::iterator& it)
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:u")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvp:ued")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -188,6 +201,14 @@ int GetOpts(int argc, char* argv[])
 			uOpt = 1;
 			break;
 
+		case 'e':
+			eOpt = 1;
+			break;
+
+		case 'd':
+			dOpt = 1;
+			break;
+
 		default:
 			exit(1);
 		}
@@ -196,15 +217,6 @@ int GetOpts(int argc, char* argv[])
 	if(!(tarOpt = argv[optind])) {
 		fprintf(stderr, "no tarfile specified!\n");
 		exit(1);
-	}
-
-	if(!pathOpt) {
-		char path[_MAX_PATH];
-		char ext[_MAX_EXT];
-		_splitpath(tarOpt, 0, 0, path, ext);
-
-		pathOpt = new char[strlen(path) + 1];
-		strcpy(pathOpt, path);
 	}
 
 	return 0;
@@ -263,7 +275,56 @@ void main(int argc, char* argv[])
 		}
 	}
 
-	if(!vfmgr.Init(root, pathOpt, vOpt)) {
+	VFEntity* top = 0;
+
+	// check if there is only one top-level directory, and elide it if so
+	if(eOpt && root->Entries() == 1)
+	{
+		VFDirEntity::EntityNamePair* pair = root->EnPair(0);
+		if(S_ISDIR(pair->entity->Stat()->st_mode))
+		{
+			delete root;
+			top = pair->entity;
+		}
+		if(!pathOpt)
+		{
+			ostrstream s;
+			s << pair->name;
+			pathOpt = s.str();
+		}
+	}
+
+	if(!top)
+	{
+		top = root;
+	}
+
+	if(!pathOpt) {
+		char path[_MAX_PATH];
+		char ext[_MAX_EXT];
+		_splitpath(tarOpt, 0, 0, path, ext);
+
+		pathOpt = new char[strlen(path) + 1];
+		strcpy(pathOpt, path);
+	}
+
+	if(!dOpt)
+	{
+		// go into background
+
+		switch(fork())
+		{
+		case 0:
+			break;
+		case -1:
+			VFLog(0, "fork failed: [%d] %s", errno, strerror(errno));
+			exit(1);
+		default:
+			exit(0);
+		}
+	}
+
+	if(!vfmgr.Init(top, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
