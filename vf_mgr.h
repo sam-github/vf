@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/06 06:47:47  sroberts
+// implimented dup() and write()
+//
 // Revision 1.3  1998/04/05 23:51:21  sroberts
 // added mkdir() support
 //
@@ -42,16 +45,18 @@ union VFIoMsg
 	struct _fsys_mkspecial			mkdir;
 	struct _fsys_mkspecial_reply	mkdir_reply;
 
+	struct _io_dup 					dup;
+	struct _io_dup_reply 			dup_reply;
+
+	struct _io_write 				write;
+	struct _io_write_reply 			write_reply;
+
 	//struct _io_read 				read;
 	//struct _io_read_reply 		read;
-	//struct _io_write 				write;
-	//struct _io_write_reply 		write;
 	//struct _io_lseek 				lseek;
 	//struct _io_lseek_reply 		lseek;
 	//struct _io_config 			
 	//struct _io_config_reply 			
-	//struct _io_dup 			
-	//struct _io_dup_reply 			
 	//struct _io_fstat 			
 	//struct _io_chmod 			
 	//struct _io_chmod_reply 			

@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/06 06:47:47  sroberts
+// implimented dup() and write()
+//
 // Revision 1.3  1998/04/05 23:50:42  sroberts
 // added mkdir()
 //
@@ -194,12 +197,43 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 		size = root_->MkDir(msg->mkdir.path, &msg->mkdir, &msg->mkdir_reply);
 		break;
 
+	case _IO_DUP: {
+		VFOcb* ocb = ocbMap_->Get(msg->dup.src_pid, msg->dup.src_fd);
+		if(!ocb)
+		{
+			msg->dup_reply.status = EBADF;
+		}
+		else if(!ocbMap_->Map(pid, msg->dup.dst_fd, ocb))
+		{
+			msg->dup_reply.status = EBADF;
+		}
+		else
+		{
+			msg->dup_reply.status = EOK;
+		}
+
+		size = sizeof(msg->dup_reply);
+
+		} break;
+
+	case _IO_WRITE: {
+		VFOcb* ocb = ocbMap_->Get(pid, msg->write.fd);
+
+		if(!ocb)
+		{
+			msg->status = EBADF;
+			size = sizeof(msg->status);
+			break;
+		}
+
+		size = ocb->Write(pid, &msg->write, &msg->write_reply);
+
+		} break;
+
 //	case _IO_READ: break;
-//	case _IO_WRITE: break;
 //	case _IO_LSEEK: break;
 //	case _IO_RENAME: break;
 //	case _IO_GET_CONFIG: break;
-//	case _IO_DUP: break;
 //	case _IO_FSTAT: break;
 //	case _IO_CHMOD: break;
 //	case _IO_CHOWN: break;
