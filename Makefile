@@ -8,15 +8,15 @@ VERSION=vf-$(shell cat Version)
 prefix	= /usr/local
 
 CXXFLAGS	= -w2 $(OFLAGS)
-OFLAGS		= -O -g
+OFLAGS		= -Oeilrsx #-g
 LDFLAGS 	= -M -T1 $(OFLAGS)
 LDLIBS		= -l vf.lib
 POD2HTMLFLAGS = --title="A C++ Framework for QNX Virtual Filesystems"
 
 INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
-OBJ = vf_mgr.o vf_fdmap.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
-EXE = stat fifot
+OBJ = vf_mgr.o vf_fdmap.o vf_dir.o vf_file.o vf_syml.o vf_path.o vf_log.o vf.o
+EXE = stat fifot patht
 VF	= tar ramfs tgzfs popfs tarfs
 LIB = vf.lib
 DOC = vf.txt vf.html
@@ -120,6 +120,9 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.20  2000/01/13 02:28:03  sam
+#  path now has a custom allocator
+#
 # Revision 1.19  1999/12/16 04:51:48  sam
 # now does recursive build by default, and does mkdir before the install
 #

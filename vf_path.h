@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  2000/01/13 02:28:03  sam
+//  path now has a custom allocator
+//
 // Revision 1.1  1999/12/05 01:50:24  sam
 // Initial revision
 //
@@ -29,15 +32,56 @@
 
 #include <assert.h>
 #include <string.h>
+#include <limits.h>
+
+#include "vf_log.h"
 
 class Path
 {
 private:
+	//
+	// Using a custom allocator makes the patht test 4 times faster.
+	//
+	union Buffer {
+		char	p[PATH_MAX+1];
+		Buffer*	b;
+	};
+	static Buffer*	buffers_;
+
+	static char* New() {
+//		VFLog(4, "Path::New() %p", buffers_);
+
+#ifdef VF_PATH_MALLOC
+		return (char*) malloc(PATH_MAX + 1);
+#else
+		Buffer* n = buffers_;
+		if(n) {
+			buffers_ = n->b;
+		}
+		if(!n) {
+			n = new Buffer;
+		}
+		return (char*) n;
+#endif
+	}
+	static void Delete(char*& p) {
+//		VFLog(4, "Path::Delete() %p", p);
+
+#ifdef VF_PATH_MALLOC
+		free(p);
+		p = 0;
+#else
+		Buffer* bp = (Buffer*) p;
+		bp->b = buffers_;
+		buffers_ = bp;
+		p = 0;
+#endif
+	}
 	char* p_;
 
 	void Dtor()
 	{
-		delete[] p_;
+		Delete(p_);
 		p_ = 0;
 	}
 	void Ctor(const char* p, size_t l = -1)
@@ -50,12 +94,11 @@ private:
 		if(l == -1 || l > sz) {
 			l = sz;
 		}
-		p_ = new char[l + 1];
+		p_ = New();
 		assert(p_);
 		strncpy(p_, p, l);
 		p_[l] = '\0'; // strncpy doesn't null terminate...
 	}
-
 public:
 	Path(const char* p = "") : p_(0)
 	{
@@ -141,18 +184,6 @@ public:
 	{
 		return compare(p.p_);
 	}
-
-#if 0
-
-	char & operator () ( size_t __pos );        // reference-to-char operator
-	char const & operator () ( size_t __pos ) const;  // reference-to-char operator
-	char & operator [] ( size_t __pos );        // subscript operator
-	char const & operator [] ( size_t __pos ) const;  // subscript operator
-
-		// concatenate string operators
-	friend Path operator + (Path const &, Path const & );	// Path + Path
-	friend Path operator + (char, Path const & );		// character + Path
-#endif
 };
 
 //
