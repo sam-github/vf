@@ -10,7 +10,8 @@ SRC = $(wildcard *.cc)
 OBJ = vf_mgr.o vf_dir.o vf_file.o vf_log.o vf.o
 EXE = vf_test
 LIB = vf.lib
-ALL = $(LIB) $(EXE)
+ALL = depends.mak $(LIB) $(EXE)
+DEP = depends.mak
 
 # default target
 all: $(ALL)
@@ -25,8 +26,10 @@ $(OBJ): $(INC)
 
 # standard targets
 
-deps:
-	makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > depends.mak
+include $(DEP)
+
+$(DEP): $(SRC) $(INC)
+	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
 
 clean:
 	rm -f *.o *.err core *.dmp *.map
@@ -67,6 +70,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.4  1998/03/19 07:48:07  sroberts
+# make makedeps run automatically when any file changed
+#
 # Revision 1.3  1998/03/19 07:41:25  sroberts
 # implimented dir stat, open, opendir, readdir, rewinddir, close
 #
