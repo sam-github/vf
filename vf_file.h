@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.9  1999/08/03 06:13:38  sam
 // moved ram filesystem into its own subdirectory
 //
@@ -59,25 +64,25 @@
 class VFFileEntity : public VFEntity
 {
 public:
-	VFFileEntity();
-	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
-	int Stat(const String& path, _io_open* req, _io_fstat_reply* reply);
-	int ChDir(const String& path, _io_open* req, _io_open_reply* reply);
-	int Unlink();
-	int MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
-	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
+	VFFileEntity(pid_t pid, mode_t perm) :
+		VFEntity(pid, S_IFREG | (perm & 0777)) {}
 
-	bool Insert(const String& path, VFEntity* entity);
-	struct stat* Stat();
+	VFFileEntity(uid_t uid, gid_t gid, mode_t perm) :
+		VFEntity(uid, gid, S_IFREG | (perm & 0777)) {}
+
+	int Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode);
+	int Stat    (pid_t pid, const String& path, int lstat);
+	int ChDir   (pid_t pid, const String& path);
+	int ReadLink(pid_t pid, const String& path);
+	int MkSpecial(pid_t pid, const String& path, mode_t mode, const char* linkto);
+
+	int Stat	(struct stat* s) { return VFEntity::Stat(s); }
+	int	Insert(const String& path, VFEntity* entity);
 
 	// API extensions for use by VFFileOcb
-	virtual int Write(pid_t pid, size_t nbytes, off_t offset);
-	virtual int Read(pid_t pid, size_t nbytes, off_t offset);
-
-protected:
-	struct stat stat_;
-
-	void InitStat(mode_t perms, mode_t type = S_IFREG);
+	virtual int Write(pid_t pid, size_t nbytes, off_t* offset,
+		const void* data, int len);
+	virtual int Read(pid_t pid, size_t nbytes, off_t* offset);
 };
 
 class VFFileOcb : public VFOcb
@@ -86,15 +91,15 @@ public:
 	VFFileOcb(VFFileEntity* file);
 	~VFFileOcb();
 
-	int Write(pid_t pid, _io_write* req, _io_write_reply* reply);
-	int Read(pid_t pid, _io_read* req, _io_read_reply* reply);
-	int Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply);
-	int Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply);
-	int Chmod();
-	int Chown();
+	int Write(pid_t pid, int nbytes, const void* data, int len);
+	int Read(pid_t pid, int nbytes);
+	int Seek(pid_t pid, int whence, off_t offset);
+	int Fstat(pid_t pid);
+	int Chmod(pid_t pid, mode_t mode);
+	int Chown(pid_t pid, uid_t uid, gid_t gid);
 
-	int ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply);
-	int RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply);
+	int ReadDir(pid_t pid, int ndirs);
+	int RewindDir(pid_t pid);
 
 private:
 	VFFileEntity* file_;

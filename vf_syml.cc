@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.2  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -40,138 +45,161 @@
 // VFSymLinkEntity
 //
 
-VFSymLinkEntity::VFSymLinkEntity(const char* linkto, uid_t uid, gid_t gid)
+VFSymLinkEntity::VFSymLinkEntity(pid_t pid, mode_t perm, const char* linkto) :
+	VFEntity(pid, S_IFLNK | 0777)
 {
-	VFLog(3, "VFSymLinkEntity::VFSymLinkEntity(%s uid %d gid %d)",
-		linkto, uid, gid);
+	VFLog(3, "VFSymLinkEntity::VFSymLinkEntity() pid %d perm %#x linkto %s",
+		pid, perm, linkto);
 
-	linkto_[0] = '\0';
+	assert(linkto);
+	assert(strlen(linkto) <= PATH_MAX);
 
-	memset(&stat_, 0, sizeof(stat_));
+	info_.size = strlen(linkto_);
 
-	if(!linkto || strlen(linkto) > PATH_MAX) {
-		errno = EINVAL;
-		return;
-	}
-	stat_.st_size = strlen(linkto_);
-	stat_.st_ouid = uid;
-	stat_.st_ogid = gid;
-	stat_.st_mode = S_IFLNK | 0777;
-
-	strcpy(linkto_, linkto);
+	strncpy(linkto_, linkto, sizeof(linkto_) - 1);
+	linkto_[sizeof(linkto_)] = '\0';
 }
 
-VFOcb* VFSymLinkEntity::Open(
-	const String& path,
-	_io_open* req,
-	_io_open_reply* reply)
+VFSymLinkEntity::VFSymLinkEntity(uid_t uid, gid_t gid, mode_t perm, const char* linkto) :
+	VFEntity(uid, gid, S_IFLNK | 0777)
 {
-	VFLog(2, "VFSymLinkEntity::Open() path \"%s\"", (const char *) path);
+	VFLog(3, "VFSymLinkEntity::VFSymLinkEntity() uid %d gid %d perm %#x linkto %s",
+		uid, gid, perm, linkto);
 
-	RewriteOpenPath(path, req->path, &reply->status);
+	// XXX this code should be factored into a method, not cut-n-pasted!
 
-	return 0;
+	assert(linkto);
+	assert(strlen(linkto) <= PATH_MAX);
+
+	info_.size = strlen(linkto_);
+
+	strncpy(linkto_, linkto, sizeof(linkto_) - 1);
+	linkto_[sizeof(linkto_)] = '\0';
 }
 
-int VFSymLinkEntity::Stat(
-	const String& path,
-	_io_open* req,
-	_io_fstat_reply* reply
-	)
+int VFSymLinkEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
 {
-	VFLog(2, "VFSymLinkEntity::Stat(\"%s\") mode %#x eflag %#x",
-		(const char *) path, req->mode, req->eflag);
+	VFLog(2, "VFSymLinkEntity::Open() pid %d path \"%s\"",
+		pid, (const char *) path);
 
-	req = req; reply = reply;
+	fd = fd, oflag = oflag, mode = mode;
+
+	return RewriteOpenPath(pid, path);
+}
+
+int VFSymLinkEntity::Stat(pid_t pid, const String& path, int lstat)
+{
+	VFLog(2, "VFSymLinkEntity::Stat() pid %d path \"%s\" lstat %d",
+		(const char *) path, lstat);
 
 	// If we're just a component in the path, rewrite it.
 	if(path != "")
 	{
-		return RewriteOpenPath(path, req->path, &reply->status);
+		return RewriteOpenPath(pid, path);
 	}
 
 	// if mode is set it's an lstat()
-	if(req->mode == S_IFLNK && !req->eflag) {
-		reply->status = EOK;
-		reply->zero = 0;
-		reply->stat   = stat_;
-		return sizeof(*reply);
+	if(lstat) {
+		ReplyInfo(pid, &info_);
 	}
 
 	// otherwise it's a normal stat(), so rewrite the path
-	return RewriteOpenPath(path, req->path, &reply->status);
+	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::ChDir(const String& path, _io_open* req, _io_open_reply* reply)
+int VFSymLinkEntity::ChDir(pid_t pid, const String& path)
 {
-	VFLog(2, "VFSymLinkEntity::ChDir(\"%s\")", (const char*) path);
+	VFLog(2, "VFSymLinkEntity::ChDir() pid %d path \"%s\"",
+		pid, (const char*) path);
 
-	return RewriteOpenPath(path, req->path, &reply->status);
+	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::Unlink()
+int VFSymLinkEntity::Unlink(pid_t pid, const String& path)
 {
-	VFLog(2, "VFSymLinkEntity::Unlink()");
+	VFLog(2, "VFSymLinkEntity::Unlink() pid %d path \"%s\"",
+		pid, (const char*) path);
 
-	return 0;
-}
-
-int VFSymLinkEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply)
-{
-	VFLog(2, "VFSymLinkEntity::MkSpecial(\"%s\")", (const char*) path);
-
-	req = req; reply = reply;
-
-	return RewriteOpenPath(path, req->path, &reply->status);
-}
-
-int VFSymLinkEntity::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply)
-{
-	VFLog(2, "VFSymLinkEntity::ReadLink(\"%s\")", (const char*) path);
-
-	if(path != "") {
-		return RewriteOpenPath(path, req->path, &reply->status);
+	if(path != "")
+	{
+		return RewriteOpenPath(pid, path);
 	}
 
-	req = req; reply = reply;
-
-	reply->status = EOK;
-	strcpy(reply->path, linkto_);
-
-	return sizeof(*reply) + strlen(linkto_);
+	return ENOSYS;
 }
 
-bool VFSymLinkEntity::Insert(const String& path, VFEntity* entity)
+int VFSymLinkEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
+		const char* linkto)
+{
+	VFLog(2, "VFSymLinkEntity::MkSpecial() pid %d path \"%s\" mode %#x",
+		pid, (const char*) path, mode);
+
+	linkto = linkto;
+
+	if(path == "") { return EEXIST; }
+
+	return RewriteOpenPath(pid, path);
+}
+
+int VFSymLinkEntity::ReadLink(pid_t pid, const String& path)
+{
+	VFLog(2, "VFSymLinkEntity::ReadLink() pid %d path \"%s\"",
+		pid, (const char*) path);
+
+	if(path != "") {
+		return RewriteOpenPath(pid, path);
+	}
+
+	struct _fsys_readlink_reply reply;
+	struct _mxfer_entry mx[2];
+
+	reply.status = EOK;
+	reply.zero = 0;
+
+	_setmx(mx + 0, &reply, sizeof(reply) - sizeof(reply.path));
+	_setmx(mx + 1, linkto_, strlen(linkto_) + 1);
+
+	return ReplyMx(pid, 2, mx);
+}
+
+int VFSymLinkEntity::Insert(const String& path, VFEntity* entity)
 {
 	VFLog(2, "VFSymLinkEntity::Insert(\"%s\")", (const char*) path);
 
 	entity = entity;
 
-	errno = ENOTDIR;
-
-	return false;
+	return ENOTDIR;
 }
 
-struct stat* VFSymLinkEntity::Stat()
+int VFSymLinkEntity::RewriteOpenPath(pid_t pid, const String& path)
 {
-	return &stat_;
-}
-
-int VFSymLinkEntity::RewriteOpenPath(const String& path, char* ret, msg_t* status)
-{
-	VFLog(2, "VFSymLinkEntity::RewriteOpenPath() rewrite \"%s\" as \"%s\"",
+	VFLog(2, "VFSymLinkEntity::RewriteOpenPath() pid rewrite \"%s\" as \"%s\"",
 		(const char*) path, linkto_);
 
-	*status = EMORE;
-	strcpy(ret, linkto_);
+	if((strlen(linkto_) + 1 + strlen(path)) > _MAX_PATH) {
+		return ENAMETOOLONG;
+	}
+
+	msg_t reply = EMORE;
+
+	char p[_MAX_PATH + 1];
+
+	strcpy(p, linkto_); // p is bigger than the linkto buffer
 
 	if(path != "")
 	{
 		// append the sub-path they're really interested in
-		strcat(ret, "/");
-		strcat(ret, path);
+		strcat(p, "/");
+		strcat(p, path);
 	}
 
-	return sizeof(_io_open) + strlen(ret);
+	if(Writemsg(pid, offsetof(_io_open, path), p, strlen(p) + 1) == -1)
+	{
+		VFLog(1, "VFSymLinkEntity Writemsg(pid %d off %d) failed: [%d] %s",
+			pid, offsetof(_io_open, path), errno, strerror(errno));
+		return errno;
+	}
+
+	return EMORE;
 }
 

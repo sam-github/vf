@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.2  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -27,13 +32,140 @@
 // Initial revision
 //
 
+#include "sys/kernel.h"
+#include "sys/sendmx.h"
+
 #include "vf.h"
 #include "vf_log.h"
+#include "vf_fdmap.h"
+
+//
+// VFInfo
+//
+
+static dev_t VFInfo::DevNo()
+{
+	static dev_t dev = qnx_device_attach();
+
+	assert(dev != -1);
+
+	return dev;
+}
+
+//
+// VFEntity
+//
 
 VFEntity::~VFEntity()
 {
 	VFLog(3, "VFEntity::~VFEntity()");
 }
+
+int VFEntity::Unlink(pid_t pid, const String& path)
+{
+    VFLog(2, "VFDirEntity::Unlink() pid %d path \"%s\"",
+        pid, (const char *) path);
+
+    return ENOSYS;
+}
+
+int VFEntity::Chmod(pid_t pid, mode_t mode)
+{
+	VFLog(2, "VFEntity::Chmod() pid %d mode %#x\n", pid, mode);
+
+	// permissions check...
+
+	info_.mode = (info_.mode & ~07777) | (mode & 07777);
+
+	return EOK;
+}
+
+int VFEntity::Chown(pid_t pid, uid_t uid, gid_t gid)
+{
+	VFLog(2, "VFEntity::Chown() pid %d uid %d gid %d\n", pid, uid, gid);
+
+	// permissions check...
+
+	info_.uid = uid;
+	info_.gid = gid;
+
+	return EOK;
+}
+
+int VFEntity::Fstat(pid_t pid)
+{
+    VFLog(2, "VFEntity::Fstat() pid %d", pid);
+
+    ReplyInfo(pid);
+
+    return -1;
+}
+
+int VFEntity::Stat(struct stat* s)
+{
+    info_.Stat(s);
+
+    return EOK;
+}
+
+int VFEntity::ReplyStatus(pid_t pid, int status)
+{
+	msg_t msg = status;
+
+	return ReplyMsg(pid, &msg, sizeof msg);
+}
+
+int VFEntity::ReplyInfo(pid_t pid, const struct VFInfo* info)
+{
+	if(!info) { info = &info_; }
+
+	struct _io_fstat_reply reply;
+
+	reply.status = EOK;
+	reply.zero = 0;
+	info->Stat(&reply.stat);
+
+	return ReplyMsg(pid, &reply, sizeof reply);
+}
+
+int VFEntity::ReplyMsg(pid_t pid, const void* msg, size_t size)
+{
+	if(Reply(pid, msg, size) == -1) {
+		VFLog(1, "VFEntity::ReplyMsg() Reply(%d) failed: [%d] %s",
+			pid, errno, strerror(errno));
+	}
+
+	return -1;
+}
+
+int VFEntity::ReplyMx(pid_t pid, unsigned len, struct _mxfer_entry* mx)
+{
+	// cast away the const because the pragma doesn't declare its args as
+	// const, though the function does
+	if(Replymx(pid, len, mx) == -1) {
+		VFLog(1, "VFEntity::ReplyMsg() Replymx(%d) failed: [%d] %s",
+			pid, errno, strerror(errno));
+	}
+
+	return -1;
+}
+
+int VFEntity::FdAttach(pid_t pid, int fd, VFOcb* ocb)
+{
+	if(!ocb) { return ENOMEM; }
+
+	if(!VFFdMap::Fd().Map(pid, fd, ocb)) {
+		delete ocb;
+		return errno;
+	}
+
+	return EOK;
+}
+
+
+//
+// VFOcb
+//
 
 VFOcb::VFOcb() :
 	refCount_(0)

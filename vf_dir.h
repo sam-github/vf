@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.11  1999/07/02 15:29:25  sam
 // added public accessors, information is useful to vf_tar
 //
@@ -70,24 +75,53 @@
 class VFEntityFactory
 {
 public:
-	virtual VFEntity* AutoCreateDirectory()
+	virtual VFEntity* AutoDir()
 	{
 		return ENotSup();
 	}
-	virtual VFEntity* NewSpecial(_fsys_mkspecial* req)
+	virtual VFEntity* MkSpecial(pid_t pid, mode_t mode, const char* linkto)
 	{
-		return ENotSup(req);
+		switch(S_IFMT & mode)
+		{
+		case S_IFIFO:	return Fifo	(pid, mode);
+		case S_IFDIR:	return Dir	(pid, mode);
+		case S_IFLNK:	return Link	(pid, mode, linkto);
+		case S_IFREG:	return File	(pid, mode);
+			// This last isn't used by the std library, it uses Open(..O_CREAT..),
+			// but I support it as an extension.
+		default:
+			errno = EINVAL;
+			return 0;
+		}
 	}
-	virtual VFEntity* NewFile(_io_open* req = 0)
+	virtual VFEntity* Fifo(pid_t pid, mode_t mode)
 	{
-		return ENotSup(req);
+		pid = pid, mode = mode;
+
+		return ENotSup();
+	}
+	virtual VFEntity* Link(pid_t pid, mode_t mode, const char* linkto)
+	{
+		pid = pid, mode = mode, linkto = linkto;
+
+		return ENotSup();
+	}
+	virtual VFEntity* Dir(pid_t pid, mode_t mode)
+	{
+		pid = pid, mode = mode;
+
+		return ENotSup();
+	}
+	virtual VFEntity* File(pid_t pid, mode_t mode)
+	{
+		pid = pid, mode = mode;
+
+		return ENotSup();
 	}
 
 protected:
-	VFEntity* ENotSup(void* v = 0)
+	VFEntity* ENotSup()
 	{
-		v = v;
-
 		errno = ENOTSUP;
 		return 0;
 	}
@@ -96,19 +130,22 @@ protected:
 class VFDirEntity : public VFEntity
 {
 public:
-	VFDirEntity(mode_t mode, uid_t uid = -1, gid_t gid = -1,
-		VFEntityFactory* factory = 0);
+	VFDirEntity(pid_t pid, mode_t mode, VFEntityFactory* factory = 0);
+	VFDirEntity(uid_t uid, gid_t gid, mode_t mode, VFEntityFactory* factory = 0);
+
 	~VFDirEntity();
 
-	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
-	int Stat(const String& path, _io_open* req, _io_fstat_reply* reply);
-	int ChDir(const String& path, _io_open* req, _io_open_reply* reply);
-	int Unlink();
-	int MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
-	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
+	int Open	(pid_t pid, const String& path, int fd, int oflag, mode_t mode);
+	int Stat	(pid_t pid, const String& path, int lstat);
+	int ChDir	(pid_t pid, const String& path);
+	int ReadLink(pid_t pid, const String& path);
+	int MkSpecial(pid_t pid, const String& path, mode_t mode, const char* linkto);
 
-	bool Insert(const String& path, VFEntity* entity);
-	struct stat* Stat();
+	// fd-based services supported by directories
+	int		ReadDir	(int index, struct dirent* de);
+
+	// Other
+	int Insert(const String& path, VFEntity* entity);
 
 	// Public Accessors (unused by vf framework)
 	int Entries () const
@@ -162,12 +199,10 @@ private:
 	EntityMap   map_;
 	EntityIndex index_;
 
-	struct stat stat_;
-
 	VFEntityFactory* factory_;
 
 	void SplitPath(const String& path, String& lead, String& tail);
-	void InitStat(mode_t mode, uid_t uid = -1, gid_t gid = -1);
+	void InitInfo(mode_t mode, uid_t uid = -1, gid_t gid = -1);
 
 	// used by the WC hash dictionary
 	static unsigned Hash(const String& key);
@@ -179,21 +214,20 @@ public:
 	VFDirOcb(VFDirEntity* dir);
 	~VFDirOcb();
 
-	int Write(pid_t pid, _io_write* req, _io_write_reply* reply);
-	int Read(pid_t pid, _io_read* req, _io_read_reply* reply);
-	int Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply);
-	int Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply);
-	int Chmod();
-	int Chown();
+	int Write	(pid_t pid, int nbytes, const void* data, int len);
+	int Read	(pid_t pid, int nbytes);
+	int Seek	(pid_t pid, int whence, off_t offset);
+	int Fstat	(pid_t pid);
+	int Chmod	(pid_t pid, mode_t mode);
+	int Chown	(pid_t pid, uid_t uid, gid_t gid);
 
-	int ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply);
-	int RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply);
+	int ReadDir(pid_t pid, int ndirs);
+	int RewindDir(pid_t pid);
 
 private:
-
 	VFDirEntity* dir_;
 
-	int readIndex_;
+	int index_;
 };
 
 #endif

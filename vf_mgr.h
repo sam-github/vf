@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.12  1999/08/03 05:10:54  sam
 // *** empty log message ***
 //
@@ -65,11 +70,7 @@
 
 #include "vf.h"
 
-// temporary for OcbMap
-#include <unistd.h>
-#include <sys/fd.h>
-
-union VFIoMsg
+union VFMsg
 {
 	msg_t	type;
 	msg_t	status;
@@ -110,12 +111,12 @@ union VFIoMsg
 	struct _io_open					remove;
 	struct _io_open_reply			remove_reply;
 
-	//struct _io_chmod 			
-	//struct _io_chmod_reply 			
-	//struct _io_chown 			
-	//struct _io_chown_reply 			
-	//struct _io_utime 			
-	//struct _io_utime_reply 			
+	struct _io_chmod 				chmod;
+
+	struct _io_chown 				chown;
+
+	struct _io_utime 				utime;
+
 	//struct _io_lock 			
 	//struct _io_config 			
 	//struct _io_config_reply 			
@@ -149,8 +150,9 @@ union VFIoMsg
 	struct _sysmsg_reply			sysmsg_reply;
 
 	// reserve space because struct _io_open and such have buffers of
-	// unspecified length as members
-	char reserve [4096 + 2*sizeof(_io_read)];
+	// unspecified length as members, a symlink create msg has two paths
+	// in that buffer!
+	char reserve [2 * (PATH_MAX+1) + 2 * sizeof(_io_open)];
 };
 
 struct VFVersion : public _sysmsg_version_reply
@@ -171,32 +173,29 @@ struct VFVersion : public _sysmsg_version_reply
 	}
 };
 
-class OcbMap;
-
 class VFManager
 {
 public:
 	VFManager(const VFVersion& version);
 
-	Init(VFEntity *root, const char* mount, int verbosity = 1);
+	virtual int Init(VFEntity *root, const char* mount, int verbosity = 1);
 
-	virtual int Service(pid_t pid, VFIoMsg* msg);
+	virtual int Service(pid_t pid, VFMsg* msg);
 
 	void Run();
 
+	// convert numbers to string names, for logging and debugging
 	static const char* MessageName(msg_t type);
 	static const char* HandleOflagName(short int oflag);
 	static const char* SysmsgSubtypeName(short unsigned subtype);
 
 private:
-	VFOcbMap* ocbMap_;
+	void ReplyMsg(pid_t pid, const void* msg, size_t size);
 
-	VFIoMsg msg_;
-
+	VFVersion	version_;
+	VFMsg		msg_;
 	VFEntity*   root_;
 	const char* mount_;
-
-	const VFVersion&	version_;
 };
 
 #endif

@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.12  1999/08/03 06:13:38  sam
 // moved ram filesystem into its own subdirectory
 //
@@ -74,152 +79,84 @@
 // VFFileEntity
 //
 
-VFFileEntity::VFFileEntity()
+int VFFileEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
 {
-	memset(&stat_, 0, sizeof(stat_));
-}
-
-VFOcb* VFFileEntity::Open(
-	const String& path,
-	_io_open* req,
-	_io_open_reply* reply)
-{
-	VFLog(2, "VFFileEntity::Open() fd %d path \"%s\"",
-		req->fd, (const char *) path);
+	VFLog(2, "VFFileEntity::Open() pid %d path \"%s\" fd %d oflag %#x mode %#x",
+		pid, (const char *) path, fd, oflag, mode);
 
 	if(path != "")
 	{
-		reply->status = ENOTDIR;
-		return 0;
+		return ENOTDIR;
 	}
 
-	reply->status = EOK;
-	return new VFFileOcb(this);
+	return FdAttach(pid, fd, new VFFileOcb(this));
 }
 
-int VFFileEntity::Stat(
-    const String& path,
-	_io_open* req,
-	_io_fstat_reply* reply
-	)
+int VFFileEntity::Stat(pid_t pid, const String& path, int lstat)
 {
-	VFLog(2, "VFFileEntity::Stat(\"%s\")", (const char *) path);
-
-	req = req; reply = reply;
+	VFLog(2, "VFFileEntity::Stat() pid %d path \"%s\" lstat %d",
+		pid, (const char *) path, lstat);
 
 	if(path != "")
 	{
-		reply->status = ENOTDIR;
-		return 0;
-	}
-	else
-	{
-		reply->status = EOK;
-		reply->zero = 0;
-		reply->stat   = stat_;
+		return ENOTDIR;
 	}
 
-	return sizeof(*reply);
+	return ReplyInfo(pid);
 }
 
-int VFFileEntity::ChDir(
-	const String& path,
-	_io_open* open,
-	_io_open_reply* reply
-	)
+int VFFileEntity::ChDir(pid_t pid, const String& path)
 {
-	VFLog(2, "VFFileEntity::ChDir(\"%s\")", (const char *) path);
+	VFLog(2, "VFFileEntity::ChDir() pid %d \"%s\"",
+		pid, (const char *) path);
 
-	open = open; reply = reply;
-
-	reply->status = ENOTDIR;
-	return sizeof(reply->status);
+	return ENOTDIR;
 }
 
-int VFFileEntity::Unlink()
+int VFFileEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
+		const char* linkto)
 {
-	return 0;
+	VFLog(2, "VFFileEntity::MkSpecial() pid %d path \"%s\" mode %#x",
+		pid, (const char *) path, mode);
+
+	linkto = linkto;
+
+	if(path == "") { return EEXIST; }
+
+	return ENOTDIR;
 }
 
-int VFFileEntity::MkSpecial(
-	const String& path,
-	_fsys_mkspecial* req,
-	_fsys_mkspecial_reply* reply
-	)
+int VFFileEntity::ReadLink(pid_t pid, const String& path)
 {
-	VFLog(2, "VFFileEntity::MkSpecial(\"%s\")", (const char *) path);
+	VFLog(2, "VFFileEntity::ReadLink() pid %d path \"%s\"",
+		pid, (const char *) path);
 
-	req = req;
-
-	reply->status = ENOTDIR;
-
-	return sizeof(reply->status);
-}
-
-int VFFileEntity::ReadLink(
-	const String& path,
-	_fsys_readlink* req,
-	_fsys_readlink_reply* reply
-	)
-{
-	VFLog(2, "VFFileEntity::ReadLink(\"%s\")", (const char *) path);
-
-	req = req;
-
-	if(path == "") {
-		reply->status = EINVAL;
-	} else { 
-		reply->status = ENOTDIR;
+	if(path != "") {
+		return ENOTDIR;
 	}
-
-	return sizeof(reply->status);
+	return EINVAL;
 }
 
-bool VFFileEntity::Insert(const String& path, VFEntity* entity)
+int VFFileEntity::Insert(const String& path, VFEntity* entity)
 {
-	(const char*) path; entity = entity;
+	(const char*) path, entity = entity;
 
-	errno = ENOTDIR;
-	return false;
+	return ENOTDIR;
 }
 
-struct stat* VFFileEntity::Stat()
+int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t* offset,
+		const void* data, int len)
 {
-	return &stat_;
+	pid = pid, nbytes = nbytes, offset = offset, data = data, len = len;
+
+	return ENOTSUP;
 }
 
-int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
 {
-	pid = pid; nbytes = nbytes; offset = offset;
+	pid = pid, nbytes = nbytes, offset = offset;
 
-	errno = ENOTSUP;
-	return -1;
-}
-
-int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
-{
-	pid = pid; nbytes = nbytes; offset = offset;
-
-	errno = ENOTSUP;
-	return -1;
-}
-
-void VFFileEntity::InitStat(mode_t perms, mode_t type)
-{
-	memset(&stat_, 0, sizeof stat_);
-
-	// clear all but permission bits from mode
-	stat_.st_mode = (S_IFMT & type) | (S_IPERMS & perms);
-	stat_.st_nlink = 1;
-
-	stat_.st_ouid = getuid();
-	stat_.st_ogid = getgid();
-
-	stat_.st_ftime =
-	  stat_.st_mtime =
-	    stat_.st_atime =
-	      stat_.st_ctime = time(0);
-
+	return ENOTSUP;
 }
 
 //
@@ -236,122 +173,84 @@ VFFileOcb::~VFFileOcb()
 {
 }
 
-int VFFileOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
+int VFFileOcb::Write(pid_t pid, int nbytes, const void* data, int len)
 {
 	// permissions checks...
 
-	reply->nbytes = file_->Write(pid, req->nbytes, offset_);
-
-	if(reply->nbytes == -1)
-	{
-		reply->status = errno;
-		return sizeof(reply->status);
-	}
-	// fill in successful reply
-	reply->status = EOK;
-	reply->zero = 0;
-
-	// update this ocb's file position
-	offset_ += reply->nbytes;
-
-	return sizeof(*reply);
+	return file_->Write(pid, nbytes, &offset_, data, len);
 }
 
-int VFFileOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
+int VFFileOcb::Read(pid_t pid, int nbytes)
 {
 	// permissions checks...
 
-	reply->nbytes = file_->Read(pid, req->nbytes, offset_);
-
-	if(reply->nbytes == -1)
-	{
-		reply->status = errno;
-		return sizeof(reply->status);
-	}
-	// fill in successful reply
-	reply->status = EOK;
-	reply->zero = 0;
-
-	// update this ocb's file position
-	offset_ += reply->nbytes;
-
-	// the file_->Read() already did the data part of the reply,
-	// so be very careful not to overwrite that data with our reply
-	return sizeof(*reply) - sizeof(reply->data);
+	return file_->Read(pid, nbytes, &offset_);
 }
 
-int VFFileOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
+int VFFileOcb::Seek(pid_t pid, int whence, off_t offset)
 {
 	pid = pid;
 
-	off_t to = offset_;
-	if(req->whence == SEEK_SET)
-	{
-		to = req->offset;
-	}
-	else if(req->whence == SEEK_CUR)
-	{
-		to += req->offset;
-	}
-	else if(req->whence == SEEK_END)
-	{
-		to = file_->Stat()->st_size - req->offset;
-	}
-	else
-	{
-		reply->status = EINVAL;
-		return sizeof(reply->status);
-	}
 
-	if(to < 0)
+	switch(whence)
 	{
-		reply->status = EINVAL;
-		return sizeof(reply->status);
+	case SEEK_SET:
+		break;
+	case SEEK_CUR:
+		offset += offset_;
+		break;
+	case SEEK_END: {
+		struct stat s;
+		file_->Stat(&s);
+		offset = s.st_size - offset;
+		break;
+		}
+	default:
+		return EINVAL;
 	}
 
-	reply->offset = offset_ = to;
-	reply->zero = 0;
-	reply->status = EOK;
+	if(offset < 0)
+	{
+		return EINVAL;
+	}
 
-	return sizeof(*reply);
+	struct _io_lseek_reply reply;
+
+	reply.status = EOK;
+	reply.zero = 0;
+	reply.offset = offset_ = offset;
+
+	return file_->ReplyMsg(pid, &reply, sizeof(reply));
 }
 
-int VFFileOcb::Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply)
+int VFFileOcb::Fstat(pid_t pid)
 {
-	VFLog(2, "VFFileEntity::Stat() pid %d fd %d", pid, req->fd);
+	VFLog(2, "VFFileEntity::Fstat() pid %d", pid);
 
-	struct stat* stat = file_->Stat();
-	assert(stat);
-
-	// yeah, I know I should do the Replymx thing to avoid memcpys...
-	reply->status = EOK;
-	reply->zero = 0;
-	reply->stat = *stat;
-
-	return sizeof(*reply);
+	return file_->Fstat(pid);
 }
 
-int VFFileOcb::Chmod()
+int VFFileOcb::Chmod(pid_t pid, mode_t mode)
 {
-	return 0;
+	return file_->Chmod(pid, mode);
 }
 
-int VFFileOcb::Chown()
+int VFFileOcb::Chown(pid_t pid, uid_t uid, gid_t gid)
 {
-	return 0;
+	return file_->Chown(pid, uid, gid);
 }
 
-int VFFileOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
+int VFFileOcb::ReadDir(pid_t pid, int ndirs)
 {
-	pid = pid; req = req; reply = reply;
+	pid = pid, ndirs = ndirs;
 
-	return 0;
+	return EBADF;
 }
 
-int VFFileOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
+int VFFileOcb::RewindDir(pid_t pid)
 {
-	pid = pid; req = req; reply = reply;
+	pid = pid;
 
-	return 0;
+	return EBADF;
 }
 

@@ -13,8 +13,8 @@ POD2HTMLFLAGS = --title="A C++ Framework for QNX Virtual Filesystems"
 
 INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
-OBJ = vf_mgr.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
-EXE = vf_ram
+OBJ = vf_mgr.o vf_fdmap.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
+EXE = stat fifot
 VF	= ramfs tarfs popfs
 LIB = vf.lib
 DOC = vf.txt vf.html
@@ -59,23 +59,6 @@ empty: clean
 export: all
 
 docs: vf.txt vf.html
-
-#.PHONY: clean empty export
-
-# development targets
-.PHONY: run noisy debug stop
-
-run: stop vf_ram
-	vf_ram -v &
-
-noisy: stop vf_ram
-	vf_ram -vvvvv &
-
-debug: stop vf_ram
-	wd vf_ram -vvvv &
-
-stop:
-	-slay -f vf_ram || true
 
 # rule forcing run of usemsg after linking
 %: %.o
@@ -129,6 +112,11 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.16  1999/08/09 15:12:51  sam
+# To allow blocking system calls, I refactored the code along the lines of
+# QSSL's iomanager2 example, devolving more responsibility to the entities,
+# and having the manager and ocbs do less work.
+#
 # Revision 1.15  1999/08/03 06:13:38  sam
 # moved ram filesystem into its own subdirectory
 #

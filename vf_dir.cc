@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.16  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.15  1999/07/02 15:29:06  sam
 // assert more things that must be true
 //
@@ -74,7 +79,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/fsys.h>
+#include <sys/kernel.h>
 #include <sys/psinfo.h>
+#include <sys/sendmx.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -86,11 +93,18 @@
 // VFDirEntity
 //
 
-VFDirEntity::VFDirEntity(mode_t mode, uid_t uid, gid_t gid, VFEntityFactory* factory) :
+VFDirEntity::VFDirEntity(pid_t pid, mode_t perm, VFEntityFactory* factory) :
+	VFEntity(pid, S_IFDIR | (perm & 0777)),
 	map_(&Hash),
 	factory_(factory)
 {
-	InitStat(mode, uid, gid);
+}
+
+VFDirEntity::VFDirEntity(uid_t uid, gid_t gid, mode_t perm, VFEntityFactory* factory) :
+	VFEntity(uid, gid, S_IFDIR | (perm & 0777)),
+	map_(&Hash),
+	factory_(factory)
+{
 }
 
 // need another ctor that takes a stat as an arg
@@ -100,20 +114,16 @@ VFDirEntity::~VFDirEntity()
 	VFLog(3, "VFDirEntity::~VFDirEntity()");
 }
 
-VFOcb* VFDirEntity::Open(
-	const String& path,
-	_io_open* req,
-	_io_open_reply* reply)
+int VFDirEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
 {
-	VFLog(2, "VFDirEntity::Open() fd %d path \"%s\"",
-		req->fd, (const char *) path);
+	VFLog(2, "VFDirEntity::Open() pid %d path \"%s\" fd %d oflag %#x mode %#x",
+		pid, (const char *) path, fd, oflag, mode);
 
 	// check permissions...
 
-	if(path == "") // open the directory
+	if(path == "") // open this directory
 	{
-		reply->status = EOK;
-		return new VFDirOcb(this);
+		return FdAttach(pid, fd, new VFDirOcb(this));
 	}
 
 	String lead;
@@ -122,77 +132,76 @@ VFOcb* VFDirEntity::Open(
 
 	VFEntity* entity = map_.find(lead);
 
+	// XXX no factory and O_CREAT is a ENOTSUP, not ENOENT!
+	// XXX what about O_EXCL? Deal with it!
+
 	// if there is not an entity, perhaps create one
-	if(!entity && tail == "" && factory_ && (req->oflag & O_CREAT))
+	if(!entity && tail == "" && factory_ && (oflag & O_CREAT))
 	{
-		entity = factory_->NewFile(req);
-		if(!entity || !Insert(lead, entity))
+		entity = factory_->File(pid, mode);
+		if(!entity)
 		{
-			VFLog(2, "VFDirEntity::Open() create failed: %s", strerror(errno));
-			reply->status = errno;
+			VFLog(2, "VFDirEntity::Open() create failed: [%d] %s",
+				errno, strerror(errno));
+			return errno;
+		}
+
+		int e = Insert(lead, entity);
+
+		if(e != EOK)
+		{
+			VFLog(2, "VFDirEntity::Open() Insert() failed: [%d] %s",
+				e, strerror(e));
 			delete entity;
-			return 0;
+			return e;
 		}
 	}
 
 	if(entity)
 	{
-		return entity->Open(tail, req, reply);
+		return entity->Open(pid, tail, fd, oflag, mode);
 	}
 
 	VFLog(2, "VFDirEntity::Open() failed: no entity");
 
-	reply->status = ENOENT;
-	return 0;
+	return ENOENT;
 }
 
-int VFDirEntity::Stat(
-	const String& path,
-	_io_open* req,
-	_io_fstat_reply* reply)
+int VFDirEntity::Stat(pid_t pid, const String& path, int lstat)
 {
-	VFLog(2, "VFDirEntity::Stat(\"%s\")", (const char *) path);
-
-	req = req; reply = reply;
+	VFLog(2, "VFDirEntity::Stat() pid %d path \"%s\" lstat %d",
+		pid, (const char *) path, lstat);
 
 	if(path == "")
 	{
-		reply->status = EOK;
-		reply->zero = 0;
-		reply->stat   = stat_;
-		return sizeof(*reply);
+		return ReplyInfo(pid);
 	}
 
 	String lead;
 	String tail;
 	SplitPath(path, lead, tail);
 
-
 	VFEntity* entity = map_.find(lead);
 	if(!entity)
 	{
-		VFLog(2, "VFDirEntity::Stat() failed: no entity");
-		reply->status = ENOENT;
-		return sizeof(reply->status);
+		VFLog(2, "VFDirEntity::Stat() failed: [%d] %s",
+			ENOENT, strerror(ENOENT));
+		return ENOENT;
 	}
 
-	return entity->Stat(tail, req, reply);
+	return entity->Stat(pid, tail, lstat);
 }
 
-int VFDirEntity::ChDir(
-	const String& path,
-	_io_open* open,
-	_io_open_reply* reply)
+int VFDirEntity::ChDir(pid_t pid, const String& path)
 {
-	VFLog(2, "VFDirEntity::ChDir(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::ChDir() pid %d path \"%s\")",
+		pid, (const char *) path);
 
 	if(path == "")
 	{
 		// check permissions...
 
-		reply->status = EOK;
-
-		return sizeof(reply->status);
+		return EOK;
 	}
 
 	String lead;
@@ -205,26 +214,21 @@ int VFDirEntity::ChDir(
 	{
 		VFLog(2, "VFDirEntity::ChDir() failed: no entity");
 
-		reply->status = ENOENT;
-		return sizeof(reply->status);
+		return ENOENT;
 	}
 
-	return entity->ChDir(tail, open, reply);
+	return entity->ChDir(pid, tail);
 }
 
-int VFDirEntity::Unlink()
+int VFDirEntity::MkSpecial(pid_t pid, const String& path,
+		mode_t mode, const char* linkto)
 {
-	return 0;
-}
-
-int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply)
-{
-	VFLog(2, "VFDirEntity::MkSpecial(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::MkSpecial() pid %d path \"%s\" mode %#x",
+		pid, (const char *) path, mode);
 
 	if(path == "")
 	{
-		reply->status = ENOENT;	// so it is written in creat(3)
-		return sizeof(reply->status);
+		return EEXIST;
 	}
 
 	// recurse down to directory where special is to be made
@@ -238,57 +242,47 @@ int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspe
 
 		if(!entity)
 		{
-			reply->status = ENOENT;
-			return sizeof(reply->status);
+			return ENOENT;
 		}
-		return entity->MkSpecial(tail, req, reply);
+		return entity->MkSpecial(pid, tail, mode, linkto);
 	}
 
 	// this is where special is to be made
 	if(!factory_)
 	{
-		reply->status = ENOTSUP;
-		return sizeof(reply->status);
+		return ENOTSUP;
 	}
 	
-	VFEntity* entity = factory_->NewSpecial(req);
+	VFEntity* entity = factory_->MkSpecial(pid, mode, linkto);
 
 	if(!entity)
 	{
-		reply->status = errno;
-	}
-	else if(!Insert(lead, entity))
-	{
-		reply->status = errno;
-	}
-	else
-	{
-		reply->status = EOK;
+		VFLog(2, "VFDirEntity::MkSpecial() MkSpecial(%#x) failed: [%d] %s",
+			mode, errno, strerror(errno));
+		return errno;
 	}
 
-	if(reply->status != EOK)
+	int e = Insert(lead, entity);
+
+	if(e != EOK)
 	{
-		VFLog(2, "VFDirEntity::MkSpecial() failed: [%d] %s",
-			reply->status, strerror(reply->status));
+		VFLog(2, "VFDirEntity::MkSpecial() Insert() failed: [%d] %s",
+			e, strerror(e));
 
 		delete entity;
 	}
 
-	return sizeof(reply->status);
+	return e;
 }
 
-int VFDirEntity::ReadLink(
-	const String& path,
-	_fsys_readlink* req,
-	_fsys_readlink_reply* reply)
+int VFDirEntity::ReadLink(pid_t pid, const String& path)
 {
-	VFLog(2, "VFDirEntity::ReadLink(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::ReadLink() pid %d path \"%s\"",
+		pid, (const char *) path);
 
 	if(path == "")
 	{
-		reply->status = EINVAL;
-
-		return sizeof(reply->status);
+		return EINVAL;
 	}
 
 	String lead;
@@ -301,16 +295,31 @@ int VFDirEntity::ReadLink(
 	{
 		VFLog(2, "VFDirEntity::ReadLink() failed: no entity");
 
-		reply->status = ENOENT;
-		return sizeof(reply->status);
+		return ENOENT;
 	}
 
-	return entity->ReadLink(tail, req, reply);
+	return entity->ReadLink(pid, tail);
 }
 
-bool VFDirEntity::Insert(const String& path, VFEntity* entity)
+int VFDirEntity::ReadDir(int index, dirent* de)
 {
-	VFLog(2, "VFDirEntity::Insert(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::DirStt() index %d", index);
+
+	if(index >= map_.entries()) { return EINVAL; }
+
+	EntityNamePair* pair = index_[index];
+	assert(pair);
+
+	assert(strlen(pair->name) <= NAME_MAX);
+	strcpy(de->d_name, pair->name);
+	pair->entity->Stat(&de->d_stat);
+
+	return EOK;
+}
+
+int VFDirEntity::Insert(const String& path, VFEntity* entity)
+{
+	VFLog(2, "VFDirEntity::Insert() path \"%s\"", (const char *) path);
 
 	assert(path != "");
 	assert(entity);
@@ -325,8 +334,7 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 	{
 		if(map_.contains(lead))
 		{
-			errno = EEXIST;
-			return false;
+			return EEXIST;
 		}
 
 		int i = map_.entries();
@@ -334,12 +342,12 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 		map_[lead] = entity;
 		index_[i]  = new EntityNamePair(entity, lead);
 
-		stat_.st_size = map_.entries();
+		info_.size = map_.entries();
 
 		assert(map_[lead] == entity);
 		assert(index_[i]->entity == entity);
 
-		return true;
+		return EOK;
 	}
 
 	// there is a tail, so we need to insert into a subdirectory
@@ -349,27 +357,24 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 	// auto-create the subdirectory to insert into, if necessary and possible
 	if(!map_.contains(lead) && factory_)
 	{
-		sub = factory_->AutoCreateDirectory();
+		sub = factory_->AutoDir();
+		if(!sub) { return errno; }
 
-		if(sub && !Insert(lead, sub)) {
+		int e = Insert(lead, sub);
+
+		if(e != EOK) {
 			delete sub;
-			return false;
+			return e;
 		}
 	}
 
 	// find the subdirectory to insert into
 	sub = map_.find(lead);
 	if(!sub) {
-		errno = ENOENT;
-		return false;
+		return ENOENT;
 	}
 
 	return sub->Insert(tail, entity);
-}
-
-struct stat* VFDirEntity::Stat()
-{
-	return &stat_;
 }
 
 void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
@@ -389,24 +394,17 @@ void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
 	}
 }
 
-void VFDirEntity::InitStat(mode_t mode, uid_t uid, gid_t gid)
+void VFDirEntity::InitInfo(mode_t mode, uid_t uid, gid_t gid)
 {
-	memset(&stat_, 0, sizeof stat_);
+	memset(&info_, 0, sizeof info_);
 
-	// stip type info from mode
+	// strip type info from mode
 	mode &= 0777;
 
-	stat_.st_mode = mode | S_IFDIR;
-	stat_.st_nlink = 1;
+	info_.mode = mode | S_IFDIR;
 
-	stat_.st_ouid = uid != -1 ? uid :getuid();
-	stat_.st_ogid = gid != -1 ? gid :getgid();
-
-	stat_.st_ftime =
-	  stat_.st_mtime =
-	    stat_.st_atime =
-	      stat_.st_ctime = time(0);
-
+	if(uid != -1) { info_.uid = uid; }
+	if(gid != -1) { info_.gid = gid; }
 }
 
 unsigned VFDirEntity::Hash(const String& key)
@@ -423,8 +421,8 @@ unsigned VFDirEntity::Hash(const String& key)
 //
 
 VFDirOcb::VFDirOcb(VFDirEntity* dir) :
-	dir_       (dir),
-	readIndex_ (0)
+	dir_	(dir),
+	index_	(0)
 {
 	VFLog(2, "VFDirOcb::VFDirOcb()");
 }
@@ -434,99 +432,94 @@ VFDirOcb::~VFDirOcb()
 	VFLog(3, "VFDirOcb::~VFDirOcb()");
 }
 
-int VFDirOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
+int VFDirOcb::Write(pid_t pid, int nbytes, const void* data, int len)
 {
-	pid = pid, req = req;
-	reply->status = ENOSYS;
-	return sizeof(reply->status);
+	pid = pid, nbytes = nbytes, data = data, len = len;
+
+	return ENOSYS;
 }
 
-int VFDirOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
+int VFDirOcb::Read(pid_t pid, int nbytes)
 {
-	pid = pid, req = req, reply = reply;
+	pid = pid, nbytes = nbytes;
 
-	return 0;
+	return ENOSYS;
 }
 
-int VFDirOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
+int VFDirOcb::Seek(pid_t pid, int whence, off_t offset)
 {
-	pid = pid, req = req, reply = reply;
+	pid = pid, whence = whence, offset = offset;
 
-	return 0;
+	return ENOSYS;
 }
 
-int VFDirOcb::Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply)
+int VFDirOcb::Fstat(pid_t pid)
 {
-	VFLog(2, "VFDirOcb::Stat() pid %d fd %d", pid, req->fd);
+	VFLog(2, "VFDirOcb::Stat() pid %d", pid);
 
-	struct stat* stat = dir_->Stat();
-	assert(stat);
-
-	// yeah, I know I should do the Replymx thing to avoid memcpys...
-	reply->status = EOK;
-	reply->zero = 0;
-	reply->stat = *stat;
-
-	return sizeof(*reply);
+	return dir_->Fstat(pid);
 }
 
-int VFDirOcb::Chmod()
+int VFDirOcb::Chmod(pid_t pid, mode_t mode)
 {
-	return 0;
+	return dir_->Chmod(pid, mode);
 }
 
-int VFDirOcb::Chown()
+int VFDirOcb::Chown(pid_t pid, uid_t uid, gid_t gid)
 {
-	return 0;
+	return dir_->Chown(pid, uid, gid);
 }
 
-int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
+int VFDirOcb::ReadDir(pid_t pid, int ndirs)
 {
-	pid = pid, req = req;
+	pid = pid, ndirs = ndirs;
 
-	int entries = dir_->map_.entries();
+	VFLog(2, "VFDirOcb::ReadDir() pid %d ndirs %d index %d",
+		pid, ndirs, index_);
 
-	VFLog(2, "VFDirOcb::ReadDir() index %d entries %d", readIndex_, entries);
+	_io_readdir_reply reply;
+	dirent	dirents[1]; // We'll do more than one later
+	_mxfer_entry mx[1 + sizeof(dirents) / sizeof(dirent)];
 
-	reply->status = EOK;
+	_setmx(&mx[0], &reply, sizeof(reply) - sizeof(reply.data));
 
-	reply->zero[0] = 0; // should use a memset
-	reply->zero[1] = 0;
-	reply->zero[2] = 0;
-	reply->zero[3] = 0;
-	reply->zero[4] = 0;
+	reply.status	= EOK;
+	reply.ndirs		= 0;
+	reply.zero[0]	= 0;
+	reply.zero[1]	= 0;
+	reply.zero[2]	= 0;
+	reply.zero[3]	= 0;
+	reply.zero[4]	= 0;
 
-	if(readIndex_ >= entries)
+	int e = dir_->ReadDir(index_++, &dirents[0]);
+
+	if(e == EINVAL)
 	{
-		reply->ndirs  = 0;
-		return sizeof(*reply);
+		Replymx(pid, 1, mx);
+		return -1;
 	}
 	
-	VFDirEntity::EntityNamePair* pair = dir_->index_[readIndex_++];
-	assert(pair);
+	if(e != EOK) {
+		return e;
+	}
 
-	reply->ndirs  = 1;
-	struct dirent* dirent = (struct dirent*) &reply->data[0];
+	reply.ndirs  = 1;
 
-	strcpy(dirent->d_name, pair->name); // should probably use strncpy()
-	dirent->d_stat = *pair->entity->Stat();
-	dirent->d_stat.st_status |= _FILE_USED;
+	_setmx(&mx[1], &dirents, reply.ndirs * sizeof(struct dirent));
 
-	VFLog(2, "VFDirOcb::ReadDir() name %s", &reply->data[sizeof(struct stat)]);
+	Replymx(pid, 2, mx);
 
-	return sizeof(*reply) - sizeof(reply->data) + sizeof(struct dirent);
+	return -1;
 }
 
-int VFDirOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
+int VFDirOcb::RewindDir(pid_t pid)
 {
-	pid = pid, req = req, reply = reply;
+	pid = pid;
 
 	VFLog(2, "VFDirOcb::RewindDir()");
 
-	readIndex_ = 0;
+	index_ = 0;
 
-	reply->status = EOK;
-
-	return sizeof(*reply);
+	return EOK;
 }
 

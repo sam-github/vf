@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.16  1999/08/09 15:12:51  sam
+// To allow blocking system calls, I refactored the code along the lines of
+// QSSL's iomanager2 example, devolving more responsibility to the entities,
+// and having the manager and ocbs do less work.
+//
 // Revision 1.15  1999/07/11 11:28:47  sam
 // ocb maps now use an index into a resizeable watcom vector, so should be
 // 32-bit pointer safe
@@ -79,120 +84,23 @@
 
 #include <wcvector.h>
 
+#include "vf.h"
 #include "vf_log.h"
+#include "vf_fdmap.h"
 #include "vf_mgr.h"
-
-//
-// VFOcbMap
-//
-
-// Seems impossible to declare this as a nested class... a weird Watcom bug?
-
-	template <class T>
-	class Pointer
-	{
-	public:
-		Pointer(T* i = 0) : i_(i) { }
-		Pointer(const Pointer& i) { i_ = i.i_; }
-
-		operator = (T* i) { i_ = i; }
-
-		operator T* () { return i_; }
-
-	//  int integer() { return i_; }
-
-	private:
-		T* i_;
-	};
-
-
-class VFOcbMap
-{
-public:
-	VFOcbMap()
-	{
-		ctrl_ = __init_fd(getpid());
-		assert(ctrl_);
-	}
-
-	VFOcb* Get(pid_t pid, int fd)
-	{
-		int index = (int) __get_fd(pid, fd, ctrl_);
-
-		VFOcb *ocb = ocbs_[index];
-
-		assert(ocb != (VFOcb*) -1);
-
-		if(ocb == (VFOcb*) 0)
-		{
-			errno = EBADF;
-			return 0;
-		}
-		return ocb;
-	}
-
-	bool Map(pid_t pid, int fd, VFOcb* ocb)
-	{
-		// increment reference count, if not mapping to null
-		if(ocb) { ocb->Refer(); }
-
-		errno = EOK;
-
-		// find a free index number, if we're mapping an ocb, the index
-		// 0 is reserved to mean "not mapped"
-		int index = 0;
-
-		if(ocb)
-		{
-			index = 1;
-			while(ocbs_[index]) { index++; }
-		}
-
-		ocbs_[index] = ocb;
-
-		if(qnx_fd_attach(pid, fd, 0, 0, 0, 0, index) == -1)
-		{
-			VFLog(2, "VFOcbMap::Map(%d, %d) failed: [%d] %s",
-				pid, fd, errno, strerror(errno));
-
-			if(ocb) { ocb->Unfer(); }
-			return false;
-		}
-		return true;
-	}
-
-	bool UnMap(pid_t pid, int fd)
-	{
-		VFOcb* ocb = Get(pid, fd);
-
-		if(!ocb) { return false; } // attempt by client to close a bad fd
-
-		ocb->Unfer();
-
-		// zero the mapping to invalidate the fd
-		Map(pid, fd, 0);
-
-		return true;
-	}
-
-private:
-	void* ctrl_;
-
-	WCValVector< Pointer<VFOcb> >	ocbs_;
-};
 
 //
 // VFManager
 //
 
 VFManager::VFManager(const VFVersion& version) :
-		version_(version)
+	version_(version), root_(0), mount_(0)
 {
 }
 
 int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 {
-	if(!root || !mount)	{ errno = EINVAL; return false; }
+	if(!root || !mount)	{ errno = EINVAL; return 0; }
 
 	root_ = root;
 	mount_ = mount;
@@ -202,17 +110,14 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 	VFLevel(mount, verbosity);
 
 
-	// initialize ocb map
-
-	ocbMap_ = new VFOcbMap;
-
-	if(!ocbMap_) { errno = ENOMEM; return false; }
+	// cause fdmap to be initialized
+	VFFdMap::Fd();
 
 	// declare ourselves as a server, and get messages in priority order
 
 	long pflags = _PPF_PRIORITY_REC | _PPF_SERVER;
 
-	if(qnx_pflags(pflags, pflags, 0, 0) == -1) { return false; }
+	if(qnx_pflags(pflags, pflags, 0, 0) == -1) { return 0; }
 
 	// attach prefix
 
@@ -226,124 +131,101 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 
 	assert(os.str()[os.pcount() - 1] == '\0');
 
-	if(qnx_prefix_attach(os.str(), 0, 0) == -1) { return false; }
+	if(qnx_prefix_attach(os.str(), 0, 0) == -1) { return 0; }
 
 	VFLog(2, "VFManager::Init() attached %s", os.str());
 
-	return true;
+	return 1;
 }
 
-int VFManager::Service(pid_t pid, VFIoMsg* msg)
+int VFManager::Service(pid_t pid, VFMsg* msg)
 {
 	VFLog(3, "VFManager::Service() pid %d type %s (%#x)",
 		pid, MessageName(msg->type), msg->type);
 
-	int size = -1;
+	int status = -1;
 
-	msg_t type = msg->type;
-
-	msg->status = ENOTSUP;
-
-	switch(type)
+	switch(msg->type)
 	{
 	case _IO_STAT:
-		size = root_->Stat(msg->open.path, &msg->open, &msg->fstat_reply);
+		status = root_->Stat(pid, msg->open.path,
+			msg->open.mode == S_IFLNK && !msg->open.eflag);
 		break;
 
 	case _IO_CHDIR:
-		size = root_->ChDir(msg->open.path, &msg->open, &msg->open_reply);
+		status = root_->ChDir(pid, msg->open.path);
 		break;
 
 	case _IO_HANDLE:
+		// XXX handle must have different permissions checks than Open!
+		// XXX the uname, chmod, chown calls should be supported!
+
 		switch(msg->open.oflag)
 		{
-		case _IO_HNDL_RDDIR: {
-			VFOcb* ocb = root_->Open(msg->open.path, &msg->open, &msg->open_reply);
+		case _IO_HNDL_RDDIR:
+			status = root_->Open(pid, msg->open.path, msg->open.fd,
+									msg->open.oflag, msg->open.mode);
 
-			if(ocb) {
-				if(!ocbMap_->Map(pid, msg->open.fd, ocb)) {
-					msg->open_reply.status = errno;
-				}
-			}
-			size = sizeof(msg->open_reply);
-
-			// An open may cause path rewriting if entity is a symbolic link.
-			if(msg->status == EMORE)
-			{
-				size = sizeof(msg->open) + PATH_MAX;
-			}
-
-			} break;
+			break;
 
 		default:
 			VFLog(1, "unknown msg type IO_HANDLE subtype %s (%d) path \"%s\"",
 				HandleOflagName(msg->open.oflag), msg->open.oflag, msg->open.path);
-			msg->status = ENOSYS;
-			size = sizeof(msg->status);
+			status = ENOSYS;
 			break;
 		}
 		break;
 
-	case _IO_OPEN: {
-		VFOcb* ocb = root_->Open(msg->open.path, &msg->open, &msg->open_reply);
+	case _IO_OPEN:
+		status = root_->Open(pid, msg->open.path, msg->open.fd,
+								msg->open.oflag, msg->open.mode);
 
-		if(ocb) {
-			if(!ocbMap_->Map(pid, msg->open.fd, ocb)) {
-				msg->open_reply.status = errno;
-			}
+		break;
+
+	case _IO_CLOSE:
+		status = EOK;
+
+		if(!VFFdMap::Fd().UnMap(pid, msg->close.fd)) {
+			status = errno;
 		}
 
-		size = sizeof(msg->open_reply);
-
-		// An open may cause path rewriting if entity is a symbolic link.
-		if(msg->status == EMORE)
-		{
-			size = sizeof(msg->open) + PATH_MAX;
-		}
-
-		} break;
-
-	case _IO_CLOSE: {
-		msg->open_reply.status = EOK;
-
-		if(!ocbMap_->UnMap(pid, msg->close.fd)) {
-			msg->open_reply.status = errno;
-		}
-
-		size = sizeof(msg->close_reply);
-
-		} break;
+		break;
 
 	case _IO_DUP: {
-		VFOcb* ocb = ocbMap_->Get(msg->dup.src_pid, msg->dup.src_fd);
+		VFOcb* ocb = VFFdMap::Fd().Get(msg->dup.src_pid, msg->dup.src_fd);
+
 		if(!ocb)
 		{
-			msg->dup_reply.status = EBADF;
+			status = EBADF;
 		}
-		else if(!ocbMap_->Map(pid, msg->dup.dst_fd, ocb))
+		else if(!VFFdMap::Fd().Map(pid, msg->dup.dst_fd, ocb))
 		{
-			msg->dup_reply.status = EBADF;
+			status = errno;
 		}
 		else
 		{
-			msg->dup_reply.status = EOK;
+			status = EOK;
 		}
-
-		size = sizeof(msg->dup_reply);
 
 		} break;
 
+
 	case _FSYS_MKSPECIAL:
-		size = root_->MkSpecial(msg->mkspec.path, &msg->mkspec, &msg->mkspec_reply);
+		// decode this to CreateFile/Symlink/Directory/etc.
+		status = root_->MkSpecial(pid, msg->mkspec.path, msg->mkspec.mode,
+					msg->mkspec.path + PATH_MAX + 1);
 		break;
 
 	case _FSYS_REMOVE: {
 		// not supported by entites yet, only accept if directed to top-level
-		if(msg->remove.path[0] != '\0') { break; }
+		if(msg->remove.path[0] != '\0') {
+			status = ENOTSUP;
+			break;
+		}
 
 		// reply with EOK, then exit
 		msg->status = EOK;
-		Reply(pid, msg, sizeof(msg->status));
+		ReplyMsg(pid, msg, sizeof(msg->status));
 
 		VFLog(2, "remove - exiting vfsys manager");
 		exit(0);
@@ -351,7 +233,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 		} break;
 
 	case _FSYS_READLINK:
-		size = root_->ReadLink(msg->rdlink.path, &msg->rdlink, &msg->rdlink_reply);
+		status = root_->ReadLink(pid, msg->rdlink.path);
 		break;
 
 	// operations supported directly by ocbs
@@ -362,34 +244,36 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 	case _IO_READDIR:
 	case _IO_REWINDDIR:
 	{
-		VFOcb* ocb = ocbMap_->Get(pid, msg->write.fd);
+		// These messages all have the fd at the same offset, so the
+		// following works:
+		VFOcb* ocb = VFFdMap::Fd().Get(pid, msg->write.fd);
 
 		if(!ocb)
 		{
-			msg->status = EBADF;
-			size = sizeof(msg->status);
+			status = EBADF;
 			break;
 		}
 
-		switch(type)
+		switch(msg->type)
 		{
 		case _IO_FSTAT:
-			size = ocb->Stat(pid, &msg->fstat, &msg->fstat_reply);
+			status = ocb->Fstat(pid);
 			break;
 		case _IO_WRITE:
-			size = ocb->Write(pid, &msg->write, &msg->write_reply);
+			status = ocb->Write(pid, msg->write.nbytes,
+							&msg->write.data[0], sizeof(*msg) - sizeof(msg->write));
 			break;
 		case _IO_READ:
-			size = ocb->Read(pid, &msg->read, &msg->read_reply);
+			status = ocb->Read(pid, msg->read.nbytes);
 			break;
 		case _IO_LSEEK:
-			size = ocb->Seek(pid, &msg->seek, &msg->seek_reply);
+			status = ocb->Seek(pid, msg->seek.whence, msg->seek.offset);
 			break;
 		case _IO_READDIR:
-			size = ocb->ReadDir(pid, &msg->readdir, &msg->readdir_reply);
+			status = ocb->ReadDir(pid, msg->readdir.ndirs);
 			break;
 		case _IO_REWINDDIR:
-			size = ocb->RewindDir(pid, &msg->rewinddir, &msg->rewinddir_reply);
+			status = ocb->RewindDir(pid);
 			break;
 		}
 	}	break;
@@ -415,35 +299,27 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 			msg->sysmsg_reply.hdr.zero		= 0;
 			msg->sysmsg_reply.body.version	= version_;
 
-			size = sizeof(msg->sysmsg_reply);
+			Reply(pid, msg, sizeof(msg->sysmsg_reply));
 
 			break;
 		
 		default:
 			VFLog(1, "unknown msg type SYSMSG subtype %s (%d)",
 				SysmsgSubtypeName(subtype), subtype);
-			msg->status = ENOSYS;
-			size = sizeof(msg->status);
+			status = ENOSYS;
 			break;
 		}
 	} break;
 
 	default:
-		VFLog(1, "unknown msg type %s (%#x)", MessageName(type), type);
+		VFLog(1, "unknown msg type %s (%#x)", MessageName(msg->type), msg->type);
 
-		msg->status = ENOSYS;
-		size = sizeof(msg->status);
+		status = ENOSYS;
 		break;
 
 	} // end switch(msg->type)
 
-	// returning 0 is allowed, its an ok way of saying just return the default
-	assert(size >= 0); // we should never see a -1 here...
-	if(size <= 0) {
-		size = sizeof(msg->status);
-	}
-
-	return size;
+	return status;
 }
 
 void VFManager::Run()
@@ -451,22 +327,37 @@ void VFManager::Run()
 	VFLog(3, "VFManager::Run()");
 
 	pid_t pid;
-	int  size;
+	int  status;
 
 	while(1)
 	{
 		pid = Receive(0, &msg_, sizeof(msg_));
 
-		size = Service(pid, &msg_);
-
-		assert(size >= sizeof(msg_.status));
-
-		if(Reply(pid, &msg_, size) == -1)
-		{
-			VFLog(1, "VFManager::Run() Reply(%d) failed: [%d] %s",
-				pid, errno, strerror(errno)
-				);
+		if(pid == -1) {
+			if(errno != EINTR) {
+				VFLog(2, "Receive() failed: [%d] %s", strerror(errno));
+			}
+			continue;
 		}
+
+		status = Service(pid, &msg_);
+
+		VFLog(4, "VFManager::Run() serviced with status %d (%s)",
+			status, status == -1 ? "none" : strerror(status));
+
+		if(status >= EOK) {
+			msg_.status = status;
+			Reply(pid, &msg_, sizeof(msg_.status));
+		}
+	}
+}
+
+void VFManager::ReplyMsg(pid_t pid, const void* msg, size_t size)
+{
+	if(Reply(pid, msg, size) == -1) {
+		VFLog(1, "VFManager::Reply() Reply(%d) failed: [%d] %s",
+			pid, errno, strerror(errno)
+			);
 	}
 }
 
