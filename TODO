@@ -8,6 +8,8 @@
  - totally missing any permissions checks on anything...
  - rdonly directory attribute respected on file creation/deletion?
  - what happens when a read/write bigger than VFIoMsg can accept occurs?
+ - cannot run find on a vfsys:
+     Cannot recurse into './vf' - filesystem forms an infinite loop
 
 * Permissions checking:
  - Need to do.
