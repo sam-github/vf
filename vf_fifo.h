@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/09/27 02:45:31  sam
+// made some members const that should've been
+//
 // Revision 1.1  1999/08/09 15:12:51  sam
 // Initial revision
 //
@@ -45,11 +48,11 @@ public:
 	{
 		return imp_.get();
 	}
-	T* Peek()
+	T* Peek() const
 	{
 		return imp_.find();
 	}
-	int Size()
+	int Size() const
 	{
 		return imp_.entries();
 	}
