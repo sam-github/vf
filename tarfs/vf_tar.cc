@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/04/30 01:54:26  sam
+// Changes to deal with archives where members are not in order of deepest
+// last, and where intermediate directories are not in the archive.
+//
 // Revision 1.4  1999/04/28 03:27:28  sam
 // Stamped sources with the GPL.
 //
@@ -59,12 +63,39 @@ usage: vf_tar [-hv] [-p vf] tarfile
          the local uid and gid
 
 Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'.
+
+It isn't clear what the correct way of dealing with absolute paths is. The
+current behaviour is:
+
+  - for archive members the leading slash, if present, is stripped, before
+    placing the member in the virtual filesystem,
+  - for archived symbolic links to absolute paths, the target path of the
+    symbolic link is left as it is.
+
+In the second case, the archive could be searched for a member matching the
+target path, and if present the symbolic link could be adjust to refer to
+that member.
+
+I've also considered dealing with the common case of archived sub-directories,
+such as "yoyo-widgets-1.3.4/..." by stripping the common leading path element,
+and naming the virtual filesystem path after that leading element.
 #endif
 
 int		vOpt	= 0;
 char*	pathOpt	= 0;
 int		uOpt	= 0;
 char*	tarOpt	= 0;
+
+int Depth(const char* p)
+{
+	int depth = 1;
+
+	while((p = strchr(p, '/'))) {
+		++p; // because p now points at a '/'
+		++depth;
+	}
+	return depth;
+}
 
 VFEntity* VFTarEntityCreate(TarArchive::iterator& it)
 {
@@ -81,12 +112,15 @@ VFEntity* VFTarEntityCreate(TarArchive::iterator& it)
 
 	if(S_ISREG(stat->st_mode)) {
 		entity = new VFTarFileEntity(it);
-	} else if(S_ISDIR(stat->st_mode)) {
+	}
+	else if(S_ISDIR(stat->st_mode)) {
 		entity = new VFDirEntity(stat->st_mode, stat->st_uid, stat->st_gid);
-	} else if(S_ISLNK(stat->st_mode)) {
+	}
+	else if(S_ISLNK(stat->st_mode)) {
 		entity = new VFSymLinkEntity(
 			it.Link(), stat->st_uid, stat->st_gid);
-	} else {
+	}
+	else {
 		VFLog(1, "unsupported tar file type");
 		return 0;
 	}
@@ -100,10 +134,8 @@ VFEntity* VFTarEntityCreate(TarArchive::iterator& it)
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:u")) != -1; )
-	{
-		switch(c)
-		{
+	for(int c; (c = getopt(argc, argv, "hvp:u")) != -1; ) {
+		switch(c) {
 		case 'h':
 			print_usage(argv);
 			exit(0);
@@ -159,24 +191,36 @@ void main(int argc, char* argv[])
 		exit(1);
 	}
 
-	VFDirEntity* root = new VFDirEntity(0555);
+	VFDirEntity* root = new VFDirEntity(0555, -1, -1, new VFDirFactory);
 
-	for(TarArchive::iterator it = tar.begin(); it; ++it) {
-		VFLog(3, "file %s", it.Path());
+	int maxDepth = 1;
+	for(int d = 1; d <= maxDepth; ++d) {
+		for(TarArchive::iterator it = tar.begin(); it; ++it) {
+			const char* p = it.Path();
 
-		if(vOpt >= 4) { it.DebugFile(stdout); }
+			if(p[0] == '/') { ++p; }
 
-		VFEntity* entity = VFTarEntityCreate(it);
+			int depth = Depth(p);
 
-		if(entity && !root->Insert(it.Path(), entity)) {
-			VFLog(0, "inserting %s failed: [%d] %s",
-				it.Path(), errno, strerror(errno));
-			exit(1);
+			VFLog(3, "d %d depth %d file %s", d, depth, it.Path());
+
+			if(depth > maxDepth) { maxDepth = depth; }
+
+			if(d == depth) {
+				if(vOpt >= 4) { it.DebugFile(stdout); }
+
+				VFEntity* entity = VFTarEntityCreate(it);
+
+				if(entity && !root->Insert(it.Path(), entity)) {
+					VFLog(0, "inserting %s failed: [%d] %s",
+						it.Path(), errno, strerror(errno));
+					exit(1);
+				}
+			}
 		}
 	}
 
-	if(!vfmgr->Init(root, pathOpt, vOpt))
-	{
+	if(!vfmgr->Init(root, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
