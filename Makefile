@@ -113,19 +113,23 @@ release: docs
 	gzip release/$(VERSION).tar
 	mv release/$(VERSION).tar.gz release/$(VERSION).tgz
 	rm -Rf $(VERSION)
-	use mount_ram > release/mount_ram.usage
-	use mount_pop > release/mount_pop.usage
-	use mount_tar > release/mount_tar.usage
-	use mount_tgz > release/mount_tgz.usage
 	cp vf.html release/
 	cp tar/untar release/
-	cp ramfs/vf_ram release/
-	cp tarfs/vf_tar release/
-	cp tgzfs/vf_tgz release/
-	cp popfs/vf_pop release/
-	for x in release/vf_*; do wstrip $$x; done
+	cp ramfs/vf_ram release/mount_ram
+	cp tarfs/vf_tar release/mount_tar
+	cp tgzfs/vf_tgz release/mount_tgz
+	cp popfs/vf_pop release/mount_pop
+	rm release/mount_*.usage
+	for x in release/mount_*; do wstrip $$x; done
+	use release/mount_ram > release/mount_ram.usage
+	use release/mount_pop > release/mount_pop.usage
+	use release/mount_tar > release/mount_tar.usage
+	use release/mount_tgz > release/mount_tgz.usage
 
 # $Log$
+# Revision 1.22  2000/01/13 03:29:47  sam
+# *** empty log message ***
+#
 # Revision 1.21  2000/01/13 03:18:56  sam
 # including binaries in releae
 #
