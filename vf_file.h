@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1999/04/24 04:38:39  sam
+//  added support for symbolic links
+//
 // Revision 1.4  1999/04/11 06:41:37  sam
 // split FileEntity into a RamFileEntity and a base FileEntity that is used by
 // the FileOcb, turns out most of the FileEntity is reuseable, just the actual
@@ -28,18 +31,20 @@
 class VFFileEntity : public VFEntity
 {
 public:
+	VFFileEntity();
 	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
 	int Stat(const String& path, _io_open* req, _io_fstat_reply* reply);
 	int ChDir(const String& path, _io_open* req, _io_open_reply* reply);
 	int Unlink();
-	int MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
+	int MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
+	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
 
 	bool Insert(const String& path, VFEntity* entity);
 	struct stat* Stat();
 
 	// API extensions for use by VFFileOcb
-	virtual int Write(pid_t pid, size_t nbytes, off_t offset) = 0;
-	virtual int Read(pid_t pid, size_t nbytes, off_t offset) = 0;
+	virtual int Write(pid_t pid, size_t nbytes, off_t offset);
+	virtual int Read(pid_t pid, size_t nbytes, off_t offset);
 
 protected:
 	struct stat stat_;

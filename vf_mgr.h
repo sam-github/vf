@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.7  1999/04/24 04:38:39  sam
+//  added support for symbolic links
+//
 // Revision 1.6  1998/04/28 07:23:50  sroberts
 // changed Handle() to Service() - the name was confusing me - and added
 // readable system message names to debug output
@@ -45,8 +48,11 @@ union VFIoMsg
 	struct _io_close 				close;
 	struct _io_close_reply 			close_reply;
 
-	struct _fsys_mkspecial			mkdir;
-	struct _fsys_mkspecial_reply	mkdir_reply;
+	struct _fsys_mkspecial			mkspec;
+	struct _fsys_mkspecial_reply	mkspec_reply;
+
+	struct _fsys_readlink			rdlink;
+	struct _fsys_readlink_reply		rdlink_reply;
 
 	struct _io_dup 					dup;
 	struct _io_dup_reply 			dup_reply;

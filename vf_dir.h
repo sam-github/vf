@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.7  1999/04/24 04:38:39  sam
+//  added support for symbolic links
+//
 // Revision 1.6  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -40,7 +43,8 @@ class VFDirFactory
 public:
 	VFDirFactory(mode_t mode = 0555);
 
-	virtual VFEntity* NewDir(_fsys_mkspecial* req = 0);
+	virtual VFEntity* NewDir();
+	virtual VFEntity* NewSpecial(_fsys_mkspecial* req = 0);
 	virtual VFEntity* NewFile(_io_open* req = 0);
 
 protected:
@@ -50,14 +54,16 @@ protected:
 class VFDirEntity : public VFEntity
 {
 public:
-	VFDirEntity(mode_t mode, VFDirFactory* factory = 0);
+	VFDirEntity(mode_t mode, uid_t uid = -1, gid_t gid = -1,
+		VFDirFactory* factory = 0);
 	~VFDirEntity();
 
 	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
 	int Stat(const String& path, _io_open* req, _io_fstat_reply* reply);
 	int ChDir(const String& path, _io_open* req, _io_open_reply* reply);
 	int Unlink();
-	int MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
+	int MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply);
+	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
 
 	bool Insert(const String& path, VFEntity* entity);
 	struct stat* Stat();
@@ -90,7 +96,7 @@ private:
 	VFDirFactory* factory_;
 
 	void SplitPath(const String& path, String& lead, String& tail);
-	void InitStat(mode_t mode);
+	void InitStat(mode_t mode, uid_t uid = -1, gid_t gid = -1);
 
 	// used by the WC hash dictionary
 	static unsigned Hash(const String& key);

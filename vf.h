@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.7  1999/04/24 04:38:39  sam
+//  added support for symbolic links
+//
 // Revision 1.6  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -56,7 +59,8 @@ public:
 	virtual int Stat(const String& path, _io_open* req, _io_fstat_reply* reply) = 0;
 	virtual int ChDir(const String& path, _io_open* req, _io_open_reply* reply) = 0;
 	virtual int Unlink() = 0;
-	virtual int MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply) = 0;
+	virtual int MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply) = 0;
+	virtual int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply) = 0;
 
 	virtual bool Insert(const String& path, VFEntity* entity) = 0;
 	virtual struct stat* Stat() = 0;
