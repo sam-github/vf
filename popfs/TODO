@@ -1,0 +1,11 @@
+
+* use top to get from/subject, and respond to realink with this info?
+
+* cache in fstream, not strstream!
+
+* implement rm()
+
+* implement quit on rmdir() of root.
+
+* permissions checks
+
