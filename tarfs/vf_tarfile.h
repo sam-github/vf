@@ -22,6 +22,9 @@
 // Copyright (c) 1999, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1999/12/05 01:59:00  sam
+// now using the rewritten <tar/tararch.h> classes
+//
 // Revision 1.4  1999/08/09 15:17:56  sam
 // Ported framework modifications down.
 //
@@ -40,19 +43,19 @@
 
 #include <vf_file.h>
 
-#include "tar_arch.h"
+#include "tar/tararch.h"
 
 class VFTarFileEntity : public VFFileEntity
 {
 public:
-	VFTarFileEntity(const TarArchive::iterator& file);
+	VFTarFileEntity(Tar::Member* file, mode_t mode);
 	~VFTarFileEntity();
 
 	int Write(pid_t pid, size_t nbytes, off_t* offset, const void* data, int len);
 	int Read(pid_t pid, size_t nbytes, off_t* offset);
 
 private:
-	TarArchive::iterator file_;
+	Tar::Member* file_;
 
 	static char buffer_[BUFSIZ];
 };

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.15  1999/12/05 01:59:00  sam
+// now using the rewritten <tar/tararch.h> classes
+//
 // Revision 1.14  1999/10/04 03:33:20  sam
 // forking is now done by the manager
 //
@@ -78,25 +81,21 @@
 #include <vf_log.h>
 
 #include "vf_tarfile.h"
-#include "tar_arch.h"
+#include <tar/tararch.h>
 
 #ifdef __USAGE
 %C - a tar archive virtual filesystem
 
-usage: vf_tar [-hv] [-p vf] tarfile
+usage: vf_tar [-hvd] [-e] file [vf]
     -h   Print this helpful message.
     -v   Increase the verbosity level.
-    -p   Path of virtual file system to create, default is the base
-         name of the file, without any extension.
-    -u   Attempt to use the user and group of the tar archive member to find
-         the local uid and gid.
-    -e   Elide top-level directory if there is only one and use that name as
-         the path 'vf' if the -p option was not specified.
     -d   Don't become a daemon, default is to fork into the background after
          reading the tar file.
+    -e   Elide top-level directory if there is only one and use that name as
+         the mount path if 'vf' was not explicitly specified.
 
 Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'. It can be
-unmounted by doing a rmdir on the vfsys path (causing vf_tar to exit).
+unmounted in the standard way.
 
 It isn't clear what the correct way of dealing with absolute paths is. The
 current behaviour is:
@@ -125,90 +124,69 @@ all the time.
 class VFTarEntityFactory : public VFEntityFactory
 {
 public:
-	VFTarEntityFactory(int uOpt) : uOpt_(uOpt)
+	VFTarEntityFactory()
 	{
-		mask_ = umask(0);
+		mask_ = ~umask(0);
 		umask(mask_);
 	}
 
 	VFEntity* AutoDir()
 	{
-		return new VFDirEntity(getpid(), 0555 & ~mask_, this);
+		return new VFDirEntity(getpid(), 0555 & mask_, this);
 	}
 
-	VFEntity* Create(TarArchive::iterator& it)
+	VFEntity* Create(Tar::Archive& tar)
 	{
-		// attempt to find the local user by name
-		if(uOpt_) {
-			struct passwd* pw = getpwnam(it.User());
-			struct group* gr = getgrnam(it.Group());
-
-			it.ChUidGid(pw ? pw->pw_uid : -1, gr ? gr->gr_gid : -1);
-		}
-
 		VFEntity* entity = 0;
-		const struct stat* stat = it.Stat();
 
-		if(S_ISREG(stat->st_mode)) {
-			entity = new VFTarFileEntity(it);
-		}
-		else if(S_ISDIR(stat->st_mode)) {
-			// XXX this is a hideous security hole!
+		struct stat stat;
 
-			entity = new VFDirEntity(stat->st_uid, stat->st_gid,
-							stat->st_mode, this);
+		tar.Record()->Stat(&stat);
+
+		if(S_ISREG(stat.st_mode)) {
+			Tar::Member* m = tar.Member();
+
+			entity = new VFTarFileEntity(m, stat.st_mode & mask_);
 		}
-		else if(S_ISLNK(stat->st_mode)) {
-			entity = new VFSymLinkEntity(stat->st_uid, stat->st_gid,
-							stat->st_mode, it.Link());
+		else if(S_ISDIR(stat.st_mode)) {
+			entity = new VFDirEntity(getuid(), getgid(),
+				stat.st_mode & mask_, this);
+		}
+		else if(S_ISLNK(stat.st_mode)) {
+			entity = new VFSymLinkEntity(getuid(), getgid(),
+							stat.st_mode & mask_, tar.LinkTo());
 		}
 		else {
-			VFLog(1, "unsupported tar file type");
+			VFLog(1, "unsupported tar file type, mode %#x", stat.st_mode);
 
 			// XXX try taring up a FIFO and seeing what this does
 			return 0;
 		}
 
 		if(!entity) {
-			VFLog(0, "%s", strerror(errno));
+			VFLog(0, "creating entity failed: [%d] %s", VFERR(errno));
 			exit(1);
 		}
 		return entity;
 	}
 
 private:
-	int		uOpt_;
 	mode_t	mask_;
 };
-
 
 //
 // vf_tar: globals
 //
 
 int		vOpt	= 0;
-char*	pathOpt	= 0;
-int		uOpt	= 0;
+int		dOpt	= 0;
 int		eOpt	= 0;
 char*	tarOpt	= 0;
-int		dOpt	= 0;
-
-int Depth(const char* p)
-{
-	int depth = 1;
-
-	while((p = strchr(p, '/'))) {
-		++p; // because p now points at the '/'
-		if(*p) {
-			++depth; // don't count a trailing '/' in the depth
-		}
-	}
-	return depth;
-}
+char*	pathOpt	= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:ued")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvdet:")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -219,20 +197,15 @@ int GetOpts(int argc, char* argv[])
 			VFLevel("vf_tar", vOpt);
 			break;
 
-		case 'p':
-			pathOpt = optarg;
-			break;
-
-		case 'u':
-			uOpt = 1;
+		case 'd':
+			dOpt = 1;
 			break;
 
 		case 'e':
 			eOpt = 1;
 			break;
 
-		case 'd':
-			dOpt = 1;
+		case 't': // ignore the -t option passed by mount
 			break;
 
 		default:
@@ -240,10 +213,12 @@ int GetOpts(int argc, char* argv[])
 		}
 	}
 
-	if(!(tarOpt = argv[optind])) {
+	if(!(tarOpt = argv[optind++])) {
 		fprintf(stderr, "no tarfile specified!\n");
 		exit(1);
 	}
+
+	pathOpt = argv[optind];
 
 	return 0;
 }
@@ -257,58 +232,31 @@ void main(int argc, char* argv[])
 
 	GetOpts(argc, argv);
 
-	TarArchive tar;
+	Tar::Reader tar(tarOpt, Tar::Reader::TAR);
 
-	if(!tar.Open(tarOpt)) {
-		VFLog(0, "open tarfile %s failed: [%d] %s",
-			tarOpt, tar.ErrorNo(), tar.ErrorString());
+	if(!tar.Open()) {
+		VFLog(0, "%s failed: [%d] %s",
+			tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
 		exit(1);
 	}
 
 	mode_t mask = umask(0); umask(mask);
 
-	VFTarEntityFactory* factory = new VFTarEntityFactory(uOpt);
+	VFTarEntityFactory* factory = new VFTarEntityFactory;
 	VFDirEntity* root = new VFDirEntity(getuid(), getgid(), 0555 & ~mask, factory);
 
-	// This loop is slow but robust. Basically, we'll create intermediary
-	// directories to entities with default attributes if necessary, but
-	// we'd rather find that directories actual tar record, which will have
-	// the correct attributes. Thus loop through the archive, first
-	// inserting all top-level entities, then second-level, etc. The first
-	// loop through we'll record the maximum depth so we don't go forever.
+	do {
+		VFLog(3, "member %s", tar.Path());
 
-	int maxDepth = 1;
-	for(int d = 1; d <= maxDepth; ++d) {
-		for(TarArchive::iterator it = tar.begin(); it; ++it) {
-			const char* p = it.Path();
+		VFEntity* entity = factory->Create(tar);
 
-			if(p[0] == '/') { ++p; }
-
-			int depth = Depth(p);
-
-			VFLog(3, "d %d depth %d file %s", d, depth, it.Path());
-
-			if(depth > maxDepth) { maxDepth = depth; }
-
-			if(d == depth) {
-				if(vOpt >= 4) { it.DebugFile(stdout); }
-
-				VFEntity* entity = factory->Create(it);
-
-				if(!entity) {
-					VFLog(0, "creating entity for %s failed: [%d] %s",
-						it.Path(), errno, strerror(errno));
-					exit(1);
-				}
-				int e = root->Insert(p, entity);
-				if(e != EOK) {
-					VFLog(0, "inserting entity %s failed: [%d] %s",
-						it.Path(), e, strerror(e));
-					exit(1);
-				}
-			}
+		int e = root->Insert(tar.Path(), entity);
+		if(e != EOK) {
+			VFLog(0, "inserting entity %s failed: [%d] %s",
+				tar.Path(), e, strerror(e));
+			exit(1);
 		}
-	}
+	} while(tar.Next());
 
 	VFEntity* top = 0;
 

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/12/05 01:59:00  sam
+// now using the rewritten <tar/tararch.h> classes
+//
 // Revision 1.4  1999/08/09 15:17:56  sam
 // Ported framework modifications down.
 //
@@ -50,19 +53,21 @@
 
 char VFTarFileEntity::buffer_[BUFSIZ];
 
-VFTarFileEntity::VFTarFileEntity(const TarArchive::iterator& file) :
-	VFFileEntity(file.Stat()->st_uid, file.Stat()->st_gid, file.Stat()->st_mode),
+VFTarFileEntity::VFTarFileEntity(Tar::Member* file, mode_t mode) :
+	VFFileEntity(getuid(), getgid(), mode),
 	file_	(file)
 {
-	info_.size = file_.Stat()->st_size;
-	info_.mtime = file_.Stat()->st_mtime;
-	info_.atime = file_.Stat()->st_atime;
-	info_.ctime = file_.Stat()->st_ctime;
+	info_.size = file_->Stat()->st_size;
+	info_.mtime = file_->Stat()->st_mtime;
+	info_.atime = file_->Stat()->st_atime;
+	info_.ctime = file_->Stat()->st_ctime;
 }
 
 VFTarFileEntity::~VFTarFileEntity()
 {
 	VFLog(3, "VFTarFileEntity::~VFTarFileEntity()");
+
+	delete file_;
 }
 
 int VFTarFileEntity::Write(pid_t pid, size_t nbytes, off_t* offset,
@@ -83,12 +88,12 @@ int VFTarFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
 
 	if(nbytes > sizeof(buffer_)) { nbytes = sizeof(buffer_); }
 
-	file_.Seek(*offset);
+	file_->Seek(*offset);
 
-	unsigned incr = file_.Read(buffer_, nbytes);
+	unsigned incr = file_->Read(buffer_, nbytes);
 
 	if(incr == -1) {
-		return file_.ErrorNo();
+		return file_->ErrorNo();
 	}
 
 	struct _io_read_reply reply;
