@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/09/27 02:53:15  sam
+// put the process id in the log message format, and made some abortive
+// attempts to make setting up verbosity and string a little easier.
+//
 // Revision 1.2  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -27,16 +31,17 @@
 // Initial revision
 //
 
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
 #include <assert.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "vf_log.h"
 
 static int vf_level = 0;
-static char* vf_tag = 0;
+static char* vf_tag = "vf";
 
 void VFLog(int level, const char* format, ...)
 {
@@ -47,7 +52,7 @@ void VFLog(int level, const char* format, ...)
 
 		char buffer[BUFSIZ];
 		int index = 0;
-		index += sprintf(buffer, "%s: ", vf_tag);
+		index += sprintf(buffer, "%s[%d]: ", vf_tag, getpid());
 
 		index += vsprintf(&buffer[index], format, args);
 		index += sprintf(&buffer[index], "\n");
@@ -60,14 +65,21 @@ void VFLog(int level, const char* format, ...)
 
 void VFLevel(const char* tag, int level)
 {
-	assert(tag);
-	assert(level >= 0);
+	if(tag)			// change tag
+	{
+		if(vf_tag) { free(vf_tag); vf_tag = 0; }
 
-	if(vf_tag) { free(vf_tag); vf_tag = 0; }
+		vf_tag = strdup(tag);
 
-	vf_tag = strdup(tag);
-	vf_level = level;
+		assert(vf_tag);
+	}
 
-	assert(vf_tag);
+	if(level >= 0)	// change level
+	{
+		vf_level = level;
+	}
 }
+
+const char* VFGetTag() { return vf_tag; }
+int VFGetLevel() { return vf_level; }
 
