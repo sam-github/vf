@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/08/09 09:27:43  sam
+// started to multi-thread, but fw didn't allow blocking, checking in to fix fw
+//
 // Revision 1.3  1999/07/21 16:00:17  sam
 // the symlink extension wasn't working, commented it out
 //
@@ -43,13 +46,13 @@
 
 #include "url.h"
 
-class PopDir;
+class VFPop;
 
-class PopFile : public VFFileEntity
+class VFPopFile : public VFFileEntity
 {
 public:
-	PopFile(int msg, PopDir& dir, int size);
-	~PopFile();
+	VFPopFile(int msg, VFPop& pop, int size);
+	~VFPopFile();
 
 	int Stat(const String* path, _io_open* req, _io_fstat_reply* reply);
 	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
@@ -58,7 +61,7 @@ public:
 	int Read(pid_t pid, size_t nbytes, off_t offset);
 
 private:
-	PopDir&		dir_;
+	VFPop&		pop_;
 	int			msg_;
 	istream*	data_;
 	int			size_;
@@ -66,18 +69,27 @@ private:
 	char*		description_;
 };
 
-class PopDir : public VFDirEntity
+class VFPop : public VFManager
 {
 public:
-	PopDir(const char* host, const char* user, const char* pass, int mbuf);
+	VFPop(const char* host, const char* user, const char* pass, int mbuf);
 
-	istream* Retr(int msg);
+	void Run(const char* mount, int verbosity);
+
+	istream* Retr(int msg, VFPopFile* file);
+
+	int Service(pid_t pid, VFIoMsg* msg);
+
+	static iostream* ERROR;
+	static iostream* PAUSE;
 
 private:
-	iostream* Stream() const;
-
 	int Connect(pop3& pop);
 	int Disconnect(pop3& pop);
+
+	iostream* Stream() const;
+
+	VFDirEntity root_;
 
 	String	host_;
 	String	user_;

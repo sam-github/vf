@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.7  1999/08/09 09:27:43  sam
+// started to multi-thread, but fw didn't allow blocking, checking in to fix fw
+//
 // Revision 1.6  1999/07/21 16:00:17  sam
 // the symlink extension wasn't working, commented it out
 //
@@ -71,11 +74,11 @@ PopFail(const char* cmd, pop3& pop)
 }
 
 //
-// PopFile
+// VFPopFile
 //
 
-PopFile::PopFile(int msg, PopDir& pop, int size) :
-	dir_(pop), msg_(msg), data_(0), description_(0)
+VFPopFile::VFPopFile(int msg, VFPop& pop, int size) :
+	pop_(pop), msg_(msg), data_(0), description_(0)
 {
 	InitStat(S_IRUSR, S_IFREG);
 	stat_.st_size = size_ = size;
@@ -85,15 +88,15 @@ PopFile::PopFile(int msg, PopDir& pop, int size) :
 	description_ = os.str();
 }
 
-PopFile::~PopFile()
+VFPopFile::~VFPopFile()
 {
 	delete data_;
 	delete description_;
 }
 
-int PopFile::Stat(const String* path, _io_open* req, _io_fstat_reply* reply)
+int VFPopFile::Stat(const String* path, _io_open* req, _io_fstat_reply* reply)
 {
-    VFLog(2, "PopFile::Stat(\"%s\") mode %#x", (const char*) path, req->mode);
+    VFLog(2, "VFPopFile::Stat(\"%s\") mode %#x", (const char*) path, req->mode);
 
 	reply->status	= EOK;
 	reply->zero		= 0;
@@ -109,7 +112,7 @@ int PopFile::Stat(const String* path, _io_open* req, _io_fstat_reply* reply)
 	return sizeof(*reply);
 }
 
-int PopFile::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply)
+int VFPopFile::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply)
 {
     VFLog(2, "VFSymLinkEntity::ReadLink(\"%s\") description %s",
 		(const char*) path, description_);
@@ -122,7 +125,7 @@ int PopFile::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_re
     return sizeof(*reply) + strlen(description_);
 }
 
-int PopFile::Write(pid_t pid, size_t nbytes, off_t offset)
+int VFPopFile::Write(pid_t pid, size_t nbytes, off_t offset)
 {
 	pid = pid; nbytes = nbytes; offset = offset;
 
@@ -131,15 +134,22 @@ int PopFile::Write(pid_t pid, size_t nbytes, off_t offset)
 	return -1;
 }
 
-int PopFile::Read(pid_t pid, size_t nbytes, off_t offset)
+int VFPopFile::Read(pid_t pid, size_t nbytes, off_t offset)
 {
-	VFLog(2, "PopFile::Read() size %ld, offset %ld size %ld",
+	VFLog(2, "VFPopFile::Read() size %ld, offset %ld size %ld",
 		nbytes, offset, size_);
 
 	if(!data_) {
-		data_ = dir_.Retr(msg_);
-		if(!data_) {
+		data_ = pop_.Retr(msg_, this);
+		if(data_ == VFPop::ERROR) {
+			data_ = 0;
 			return -1;
+		}
+		if(data_ == VFPop::PAUSE) {
+			// queue the read request
+			assert(! "implemented yet");
+			data_ = 0;
+			return 0;
 		}
 	}
 
@@ -150,6 +160,8 @@ int PopFile::Read(pid_t pid, size_t nbytes, off_t offset)
 		nbytes = size_ - offset;
 	}
 
+	// this should be a loop with a 4k stack buffer, none of this one-shot
+	// do it fail shit
 	char* buffer = new char[nbytes];
 
 	if(!buffer)
@@ -174,11 +186,15 @@ int PopFile::Read(pid_t pid, size_t nbytes, off_t offset)
 }
 
 //
-// PopDir
+// VFPop
 //
 
-PopDir::PopDir(const char* host, const char* user, const char* pass, int mbuf) :
-	VFDirEntity(0500),
+iostream* VFPop::ERROR = (iostream*) -1;
+iostream* VFPop::PAUSE = (iostream*) -1;
+
+VFPop::VFPop(const char* host, const char* user, const char* pass, int mbuf) :
+	VFManager(VFVersion("vf_pop", 1.2)),
+	root_(0500),
 	host_(host),
 	user_(user),
 	pass_(pass),
@@ -196,7 +212,7 @@ PopDir::PopDir(const char* host, const char* user, const char* pass, int mbuf) :
 
 		if(!pop->list(msg, &size)) { PopFail("list", pop); }
 
-		if(!Insert(ItoA(msg), new PopFile(msg, *this, size))) {
+		if(!root_.Insert(ItoA(msg), new VFPopFile(msg, *this, size))) {
 			VFLog(0, "insert msg failed: [%d] %s\n", errno, strerror(errno));
 			Disconnect(pop); // unnecessary, but polite
 			exit(1);
@@ -206,8 +222,20 @@ PopDir::PopDir(const char* host, const char* user, const char* pass, int mbuf) :
 	Disconnect(pop);
 }
 
-istream* PopDir::Retr(int msg)
+void VFPop::Run(const char* mount, int verbosity)
 {
+	if(!Init(&root_, mount, verbosity)) {
+		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
+		exit(1);
+	}
+
+	VFManager::Run();
+}
+
+istream* VFPop::Retr(int msg, VFPopFile* file)
+{
+	file = file;
+
 	iostream* mail = Stream();
 
 	if(!mail) { return 0; }
@@ -218,7 +246,7 @@ istream* PopDir::Retr(int msg)
 	{
 		errno = EHOSTDOWN;
 
-		return 0;
+		return ERROR;
 	}
 
 	if(!pop->retr(msg, mail))
@@ -227,7 +255,7 @@ istream* PopDir::Retr(int msg)
 
 		delete mail;
 
-		mail = 0;
+		mail = ERROR;
 
 		errno = ECONNABORTED;
 	}
@@ -237,7 +265,12 @@ istream* PopDir::Retr(int msg)
 	return mail;
 }
 
-iostream* PopDir::Stream() const
+int VFPop::Service(pid_t pid, VFIoMsg* msg)
+{
+	return VFManager::Service(pid, msg);
+}
+
+iostream* VFPop::Stream() const
 {
 	iostream* s = 0;
 
@@ -268,7 +301,7 @@ iostream* PopDir::Stream() const
 }
 
 
-int PopDir::Connect(pop3& pop)
+int VFPop::Connect(pop3& pop)
 {
 	int fail = pop->connect(host_);
 
@@ -297,7 +330,7 @@ int PopDir::Connect(pop3& pop)
 	return 1;
 }
 
-int PopDir::Disconnect(pop3& pop)
+int VFPop::Disconnect(pop3& pop)
 {
 	if(!pop->quit()) {
 		VFLog(0, "quit failed: %s", pop->response() + strlen("-ERR "));
@@ -400,14 +433,11 @@ int GetOpts(int argc, char* argv[])
 
 void main(int argc, char* argv[])
 {
-	VFVersion vfver("vf_pop", 1.2);
-	VFManager vfmgr(vfver);
+	GetOpts(argc, argv);
 
 	VFLevel("vf_pop", vOpt);
 
-	GetOpts(argc, argv);
-
-	VFEntity* root = new PopDir(hostOpt, userOpt, passOpt, mbufOpt);
+	VFPop vfpop(hostOpt, userOpt, passOpt, mbufOpt);
 
 	if(!dOpt)
 	{
@@ -425,11 +455,6 @@ void main(int argc, char* argv[])
 		}
 	}
 
-	if(!vfmgr.Init(root, pathOpt, vOpt)) {
-		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
-		exit(1);
-	}
-
-	vfmgr.Run();
+	vfpop.Run(pathOpt, vOpt);
 }
 
