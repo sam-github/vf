@@ -19,9 +19,11 @@ ALL = deps $(LIB) $(EXE)
 # default targets
 .PHONY: all vf deps
 
-all: build vf
+default: all
 
 build: deps $(LIB) $(EXE)
+
+all: build vf
 
 vf: $(LIB)
 	for d in $(VF); do $(MAKE) -C $$d; done
@@ -59,7 +61,7 @@ export: all
 .PHONY: run noisy debug stop
 
 run: stop vf_ram
-	vf_ram -vv &
+	vf_ram -v &
 
 noisy: stop vf_ram
 	vf_ram -vvvvv &
@@ -103,6 +105,9 @@ release:
 	gzip ../../www/vf_* ../../www/*.tar
 
 # $Log$
+# Revision 1.11  1999/07/11 11:27:33  sam
+# decreased vf_ram verbosity for run, and tweaked build defaults
+#
 # Revision 1.10  1999/06/21 10:27:28  sam
 # added targets for the vf sub-dirs
 #
