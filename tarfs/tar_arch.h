@@ -21,6 +21,10 @@
 //
 // $Id$
 // $Log$
+// Revision 1.7  1999/10/28 04:08:46  sam
+// fixed bug in resetting of seek_ for iterators, and now works on
+// pipes if the archive is read from start to finish continuously
+//
 // Revision 1.6  1999/08/09 15:17:56  sam
 // Ported framework modifications down.
 //
@@ -60,6 +64,7 @@
  * A "record" is a piece of info that we care about.
  * Typically many "record"s fit into a "block".
  */
+#define	BLOCKSZ		512
 #define	RECORDSIZE	512
 #define	NAMSIZ		100
 #define	TUNMLEN		32
@@ -161,21 +166,10 @@ union TarRecord {
 class TarArchive
 {
 public:
-	static inline void Dup(char*& dst, const char* src)
-	{
-		if(dst) { delete [] dst; dst = 0; }
-		if(src) {
-			dst = new char[strlen(src) + 1];
-			if(dst) { strcpy(dst, src); }
-		}
-	}
-
 	class Iterator
 	{
 	private:
-		static inline void Dup(char*& dst, const char* src) {
-			TarArchive::Dup(dst, src);
-		}
+		static inline void Dup(char*& dst, const char* src);
 	public:
 		int ChUidGid(uid_t uid, gid_t gid = -1)
 		{
@@ -204,7 +198,11 @@ public:
 			off_t off = (offset_ + 1 /*header*/) * BLOCKSZ + seek_;
 
 			int ret = dir_->Read(off, buf, nbytes);
-			if(ret == -1) { errno_ = dir_->ErrorNo(); }
+			if(ret == -1) {
+				errno_ = dir_->ErrorNo();
+			} else {
+				seek_ += ret;
+			}
 			return ret;
 		}
 		const struct stat* Stat() const
@@ -388,23 +386,45 @@ public:
 		FILE*	debug_;
 	};
 
+
+	static inline void Dup(char*& dst, const char* src)
+	{
+		if(dst) { delete [] dst; dst = 0; }
+		if(src) {
+			dst = new char[strlen(src) + 1];
+			if(dst) { strcpy(dst, src); }
+		}
+	}
+
 	typedef Iterator iterator;
 	friend class Iterator;
 
-	TarArchive() : file_(0), fd_(-1), errno_(EOK) {}
-	
+	TarArchive() : fd_(-1), offset_(0), ispipe_(0), errno_(EOK) {}
+
+	int Open(int fd)
+	{
+		fd_ = dup(fd);
+		if(fd_ == -1)
+		{
+			errno_ = errno;
+			return 0;
+		}
+		// detect if fd is seekable
+		if(lseek(fd_, 0, SEEK_CUR) == -1 && errno == ESPIPE) {
+			ispipe_ = 1;
+		}
+		return 1;
+	}
 	int Open(const char* file)
 	{
 		if(!file) {
 			errno_ = EINVAL;
 			return 0;
 		}
-		file_ = file;
 		
-		fd_ = open(file_, O_RDONLY);
+		fd_ = open(file, O_RDONLY);
 		if(fd_ == -1)
 		{
-			file_ = 0;
 			errno_ = errno;
 			return 0;
 		}
@@ -422,45 +442,94 @@ public:
 private:
 	TarArchive(const TarArchive&);
 
-	enum { BLOCKSZ = 512 };
+	int		fd_;
+	off_t	offset_;
+	int		ispipe_;
+	int		errno_;
 
-	const char* file_;
-	int fd_;
-	int errno_;
+	int Seek(int to)
+	{
+		if(to == offset_)
+			return 0;
+
+		if(!ispipe_)
+		{
+			if(lseek(fd_, to, SEEK_SET) == -1) {
+				errno_ = errno;
+				return -1;
+			}
+			offset_ = to;
+		}
+		else
+		{
+			if(offset_ > to)
+			{
+				errno_ = ESPIPE;
+				return -1;
+			}
+			while(offset_ != to)
+			{
+				char scratch[BUFSIZ];
+				int sz = to - offset_;
+				if(sz > sizeof(scratch)) { sz = sizeof(scratch); }
+				sz = read(fd_, scratch, sz);
+				if(sz == -1)
+				{
+					errno_ = errno;
+					return -1;
+				}
+				offset_ += sz;
+			}
+		}
+		return 0;
+	}
 
 	int Read(off_t offset, void* data, size_t size)
 	{
 //		it->Debug("\tdir::Read() offset %u size %u\n", offset, size);
 
-		if(lseek(fd_, offset, SEEK_SET) == -1) {
-			errno_ = errno; return -1;
+		if(Seek(offset) == -1) {
+			errno_ = errno;
+			return -1;
 		}
 
 		int ret = read(fd_, data, size);
-		if(ret == -1) { errno_ = errno; }
+		if(ret == -1) {
+			errno_ = errno;
+			return -1;
+		}
+
+		offset_ += ret;
+
 		return ret;
 	}
 
 	void Iterate(Iterator* it)
 	{
 		it->Debug("\tdir::Iterate() valid %d offset %u span %u size %u\n",
-			it->valid_, it->span_, it->size_);
+			it->valid_, it->offset_, it->span_, it->size_);
 
-		// Seek to the begining-of-file past the it's file position.
+		// Seek to the begining-of-file past the iterator's file position.
 		assert((it->Valid() && it->span_ > 0) || (!it->Valid() && !it->span_));
+
 		off_t bof = it->offset_ + it->span_;
 
-		if(lseek(fd_, bof*BLOCKSZ, SEEK_SET) == -1) {
-			errno_ = errno; it->valid_ = 0; return;
+		if(Seek(bof*BLOCKSZ) == -1) {
+				errno_ = errno;
+				it->valid_ = 0;
+				return;
 		}
-
 		// Search for a valid header record.
 		TarRecord rec;
 		assert(sizeof(rec) == BLOCKSZ);
 		do {
-			int err = read(fd_, &rec, sizeof(rec));
+			int err = Read(offset_, &rec, sizeof(rec));
 			// Check for error and EOF.
-			if(err == -1) { errno_ = errno; it->valid_ = 0; return; }
+			if(err == -1) {
+				errno_ = errno;
+				it->valid_ = 0;
+				return;
+			}
 			if(err < sizeof(rec)) { it->valid_ = 0; return; }
 
 			bof++; // Read a block
@@ -470,6 +539,7 @@ private:
 				it->valid_	= 1;
 				it->offset_	= bof - 1;
 				it->span_	= 1;
+				it->seek_	= 0;
 				break;
 			};
 		} while(1);
@@ -496,6 +566,11 @@ private:
 			it->valid_, it->offset_, it->span_);
 	}
 };
+
+		inline void TarArchive::Iterator::Dup(char*& dst, const char* src)
+		{
+			TarArchive::Dup(dst, src);
+		}
 
 #endif
 
