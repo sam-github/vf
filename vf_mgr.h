@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.8  1999/04/24 21:13:28  sam
+// implemented remove on top-level causing exit of vfsys
+//
 // Revision 1.7  1999/04/24 04:38:39  sam
 //  added support for symbolic links
 //
@@ -75,15 +78,15 @@ union VFIoMsg
 	struct _io_rewinddir 			rewinddir;
 	struct _io_rewinddir_reply 		rewinddir_reply;
 
+	struct _io_open					remove;
+	struct _io_open_reply			remove_reply;
+
 	//struct _io_chmod 			
 	//struct _io_chmod_reply 			
 	//struct _io_chown 			
 	//struct _io_chown_reply 			
 	//struct _io_utime 			
 	//struct _io_utime_reply 			
-
-	// Don't intend to support these messages.
-
 	//struct _io_lock 			
 	//struct _io_config 			
 	//struct _io_config_reply 			

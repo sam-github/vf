@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.8  1999/04/24 21:13:28  sam
+// implemented remove on top-level causing exit of vfsys
+//
 // Revision 1.7  1999/04/24 04:37:06  sam
 // added support for symbolic links
 //
@@ -28,6 +31,7 @@
 // Initial revision
 //
 
+#include <stdlib.h>
 #include <sys/kernel.h>
 #include <sys/prfx.h>
 
@@ -146,14 +150,6 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 		size = root_->ChDir(msg->open.path, &msg->open, &msg->open_reply);
 		break;
 
-	case _FSYS_MKSPECIAL:
-		size = root_->MkSpecial(msg->mkspec.path, &msg->mkspec, &msg->mkspec_reply);
-		break;
-
-	case _FSYS_READLINK:
-		size = root_->ReadLink(msg->rdlink.path, &msg->rdlink, &msg->rdlink_reply);
-		break;
-
 	case _IO_HANDLE:
 		switch(msg->open.oflag)
 		{
@@ -233,6 +229,27 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 
 		} break;
 
+	case _FSYS_MKSPECIAL:
+		size = root_->MkSpecial(msg->mkspec.path, &msg->mkspec, &msg->mkspec_reply);
+		break;
+
+	case _FSYS_REMOVE: {
+		// not supported by entites yet, only accept if directed to top-level
+		if(msg->remove.path[0] != '\0') { break; }
+
+		// reply with EOK, then exit
+		msg->status = EOK;
+		Reply(pid, msg, sizeof(msg->status));
+
+		VFLog(2, "remove - exiting vfsys manager");
+		exit(0);
+
+		} break;
+
+	case _FSYS_READLINK:
+		size = root_->ReadLink(msg->rdlink.path, &msg->rdlink, &msg->rdlink_reply);
+		break;
+
 	// operations supported directly by ocbs
 	case _IO_FSTAT:
 	case _IO_WRITE:
@@ -285,7 +302,7 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 //	case _IO_QIOCTL: break;
 
 	default:
-		VFLog(1, "unknown msg type %#x", msg->type);
+		VFLog(1, "unknown msg type %#x %s", msg->type, MessageName(msg->type));
 
 		msg->status = ENOSYS;
 		size = sizeof(msg->status);
@@ -329,30 +346,54 @@ static const char* VFManager::MessageName(msg_t type)
 {
 	switch(type)
 	{
-	case 0x0101: return "IO_OPEN"; 
-	case 0x0102: return "IO_CLOSE"; 
-	case 0x0103: return "IO_READ"; 
-	case 0x0104: return "IO_WRITE"; 
-	case 0x0105: return "IO_LSEEK"; 
-	case 0x0106: return "IO_RENAME"; 
-	case 0x0107: return "IO_GET_CONFIG"; 
-	case 0x0108: return "IO_DUP"; 
-	case 0x0109: return "IO_HANDLE"; 
-	case 0x010A: return "IO_FSTAT"; 
-	case 0x010B: return "IO_CHMOD"; 
-	case 0x010C: return "IO_CHOWN"; 
-	case 0x010D: return "IO_UTIME"; 
-	case 0x010E: return "IO_FLAGS"; 
-	case 0x010F: return "IO_LOCK"; 
-	case 0x0110: return "IO_CHDIR"; 
-	case 0x0112: return "IO_READDIR"; 
-	case 0x0113: return "IO_REWINDDIR"; 
-	case 0x0114: return "IO_IOCTL"; 
-	case 0x0115: return "IO_STAT"; 
-	case 0x0116: return "IO_SELECT"; 
-	case 0x0117: return "IO_QIOCTL"; 
-	case 0x0202: return "FSYS_MKSPECIAL"; 
-	case 0x0216: return "FSYS_READLINK"; 
+	case 0x0101: return "IO_OPEN";
+	case 0x0102: return "IO_CLOSE";
+	case 0x0103: return "IO_READ";
+	case 0x0104: return "IO_WRITE";
+	case 0x0105: return "IO_LSEEK";
+	case 0x0106: return "IO_RENAME";
+	case 0x0107: return "IO_GET_CONFIG";
+	case 0x0108: return "IO_DUP";
+	case 0x0109: return "IO_HANDLE";
+	case 0x010A: return "IO_FSTAT";
+	case 0x010B: return "IO_CHMOD";
+	case 0x010C: return "IO_CHOWN";
+	case 0x010D: return "IO_UTIME";
+	case 0x010E: return "IO_FLAGS";
+	case 0x010F: return "IO_LOCK";
+	case 0x0110: return "IO_CHDIR";
+	case 0x0112: return "IO_READDIR";
+	case 0x0113: return "IO_REWINDDIR";
+	case 0x0114: return "IO_IOCTL";
+	case 0x0115: return "IO_STAT";
+	case 0x0116: return "IO_SELECT";
+	case 0x0117: return "IO_QIOCTL";
+	case 0x0202: return "FSYS_MKSPECIAL";
+	case 0x0203: return "FSYS_REMOVE";
+	case 0x0204: return "FSYS_LINK";
+	case 0x0205: return "FSYS_MOUNT_RAMDISK";
+	case 0x0206: return "FSYS_UNMOUNT_RAMDISK";
+	case 0x0207: return "FSYS_BLOCK_READ";
+	case 0x0208: return "FSYS_BLOCK_WRITE";
+	case 0x0209: return "FSYS_DISK_GET_ENTRY";
+	case 0x020A: return "FSYS_SYNC";
+	case 0x020B: return "FSYS_MOUNT_PART";
+	case 0x020C: return "FSYS_MOUNT";
+	case 0x020D: return "FSYS_GET_MOUNT";
+	case 0x020E: return "FSYS_DISK_SPACE";
+	case 0x020F: return "FSYS_PIPE";
+	case 0x0210: return "FSYS_TRUNC";
+	case 0x0211: return "FSYS_OLD_MOUNT_DRIVER";
+	case 0x0212: return "FSYS_XSTAT";
+	case 0x0213: return "FSYS_MOUNT_EXT_PART";
+	case 0x0214: return "FSYS_UMOUNT";
+	case 0x0215: return "FSYS_RESERVED";
+	case 0x0216: return "FSYS_READLINK";
+	case 0x0217: return "FSYS_MOUNT_DRIVER";
+	case 0x0218: return "FSYS_FSYNC";
+	case 0x0219: return "FSYS_INFO";
+	case 0x021A: return "FSYS_FDINFO";
+	case 0x021B: return "FSYS_MOUNT_DRIVER32";
 	default: return "unknown";
 	}
 }

@@ -7,7 +7,8 @@ But it's also pretty convenient...
 * Consider providing defaults for the
 dir/file specific methods (but not for generic ones like fstat()) that
 correctly return ENOTDIR, or whatever is appropriate. The problem is
-the correct errno depends on the type, for some of the calls.
+the correct errno depends on the type, for some of the calls. This means
+having stat data, but I don't want data in the interface classes
 
 * QNX Fsys directories support read() and write(). Should I? Why? How?
 
@@ -25,10 +26,9 @@ into generic/file specific/dir specific.
 
 * Totally missing any permissions checks on anything...
 
-* Handle unlink(), and allow unlinking of the prefix to cause exit() of the
-virtual fsys. Will need a link count in entities to support this.
+* Handle unlink(). Will need a link count in entities to support this.
 
-* MkSpecial() is wrong, I think, it should push the request down the to through
-the subdirs, not the Insert() request, subdirs should handl their own entity
-creation!
+* MkSpecial() is wrong, it should push the creation request down through
+the subdirs, allowing subdirs to handle their own entity creation, as they
+should.
 
