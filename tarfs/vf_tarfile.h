@@ -4,6 +4,9 @@
 // Copyright (c) 1999, Sam Roberts
 // 
 // $Log$
+// Revision 1.2  1999/04/24 04:41:46  sam
+// added support for symbolic links, and assorted bugfixes
+//
 // Revision 1.1  1999/04/11 06:45:36  sam
 // Initial revision
 //
@@ -18,7 +21,7 @@
 class VFTarFileEntity : public VFFileEntity
 {
 public:
-	VFTarFileEntity(TarArchive::iterator file);
+	VFTarFileEntity(const TarArchive::iterator& file);
 	~VFTarFileEntity();
 
 	int Write(pid_t pid, size_t nbytes, off_t offset);

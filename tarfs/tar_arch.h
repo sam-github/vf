@@ -3,6 +3,9 @@
  *
  * $Id$
  * $Log$
+ * Revision 1.3  1999/04/24 04:41:46  sam
+ * added support for symbolic links, and assorted bugfixes
+ *
  * Revision 1.2  1999/04/11 06:44:23  sam
  * fixed various small bugs that turned up during implementation of a tar fsys
  *
@@ -139,20 +142,32 @@ union TarRecord {
 	}
 };
 
-	inline char* StringDup(const char* in)
-	{
-		if(!in) { return 0; }
-		char* out = new char[strlen(in) + 1];
-		if(out) { strcpy(out, in); }
-		return out;
-	}
-
 class TarArchive
 {
 public:
+	static inline void Dup(char*& dst, const char* src)
+	{
+		if(dst) { delete [] dst; dst = 0; }
+		if(src) {
+			dst = new char[strlen(src) + 1];
+			if(dst) { strcpy(dst, src); }
+		}
+	}
+
 	class Iterator
 	{
+	static inline void Dup(char*& dst, const char* src) {
+		TarArchive::Dup(dst, src);
+	}
 	public:
+		int ChUidGid(uid_t uid, gid_t gid = -1)
+		{
+			if(!valid_) { return 0; }
+
+			if(uid != -1) { stat_.st_uid = uid; }
+			if(gid != -1) { stat_.st_gid = gid; }
+			return 1;
+		}
 		int Seek(off_t seek)
 		{
 			if(seek < 0) {
@@ -175,13 +190,20 @@ public:
 			if(ret == -1) { errno_ = dir_->ErrorNo(); }
 			return ret;
 		}
+		struct stat* Stat()
+		{
+			if(!valid_) { return 0; }
+
+			return &stat_;
+		}
 		int Stat(struct stat* stat)
 		{
-			TarRecord record;
-			if(Record(&record) == -1) {
-				return -1;
+			if(!valid_) { return 0; }
+
+			if(stat) {
+				*stat = stat_;
 			}
-			return record.Stat(stat);
+			return 1;
 		}
 		int Record(TarRecord* r)
 		{
@@ -189,16 +211,10 @@ public:
 			if(ret == -1) { errno_ = dir_->ErrorNo(); }
 			return ret;
 		}
-/*
-		Iterator()
+
+		Iterator(const Iterator& it)
 		{
-			Debug("\tit::it()\n");
 			Clear();
-		}
-*/
-		Iterator(const Iterator& it) : debug_(it.debug_)
-		{
-			Debug("\tit::it(it&)\n");
 			Copy(it);
 		}
 		~Iterator()
@@ -210,6 +226,7 @@ public:
 		{
 			Debug("\tit::op = ()\n");
 			Delete();
+			Clear();
 			Copy(it);
 			return *this;
 		}
@@ -239,6 +256,18 @@ public:
 		{
 			return path_;
 		}
+		const char* Group() const
+		{
+			return group_;
+		}
+		const char* User() const
+		{
+			return user_;
+		}
+		const char* Link() const
+		{
+			return link_;
+		}
 		FILE* DebugFile(FILE* debug)
 		{
 			FILE* last = debug_;
@@ -266,6 +295,8 @@ public:
 	private:
 		friend class TarArchive;
 		
+		Iterator(); // explicitly undefined/uncallable
+
 		Iterator(TarArchive* dir)
 		{
 			Clear();
@@ -273,14 +304,18 @@ public:
 			dir_ = dir;
 			++(*this);
 		}
-		void Clear()
+		void Clear(int valid = 0) // call ONLY on uninitialized memory
 		{
 			dir_	= 0;
-			valid_  = 0;
+			valid_  = valid;
 			offset_	= 0;
 			span_	= 0;
 			size_	= 0;
 			path_	= 0;
+			user_	= 0;
+			group_	= 0;
+			link_	= 0;
+			memset(&stat_, 0, sizeof(stat_));
 			seek_	= 0;
 			errno_	= 0;
 			debug_	= 0;
@@ -288,10 +323,10 @@ public:
 		void Delete()
 		{
 			Debug("\tit::Delete() valid %d\n", valid_);
-			if(valid_)
-			{
-				delete [] path_;
-			}
+			delete [] path_;
+			delete [] user_;
+			delete [] group_;
+			delete [] link_;
 		}
 		void Copy(const Iterator& it)
 		{
@@ -301,7 +336,11 @@ public:
 			offset_ = it.offset_;
 			span_   = it.span_;
 			size_   = it.size_;
-			path_   = StringDup(it.path_);
+			Dup(path_, it.path_);
+			Dup(user_, it.user_);
+			Dup(group_, it.group_);
+			Dup(link_, it.link_);
+			stat_	= it.stat_;
 			seek_	= it.seek_;
 			errno_	= it.errno_;
 			debug_	= it.debug_;
@@ -318,6 +357,11 @@ public:
 		
 		// tar file path name
 		char*	path_;
+		char*	user_;
+		char*	group_;
+		char*	link_;
+		struct stat stat_;
+
 		int		seek_;	// current read position, relative to start of data
 
 		// error handling
@@ -334,6 +378,10 @@ public:
 	
 	int Open(const char* file)
 	{
+		if(!file) {
+			errno_ = EINVAL;
+			return 0;
+		}
 		file_ = file;
 		
 		fd_ = open(file_, O_RDONLY);
@@ -410,16 +458,17 @@ private:
 		} while(1);
 
 		it->Debug("\trec: name %s mode %s uid %s gid %s size %d\n",
-			rec.name,
-			rec.mode,
-			rec.uid,
-			rec.gid,
-			strtol(rec.size, 0, 0)
-			);
+			rec.name, rec.mode, rec.uid, rec.gid, strtol(rec.size, 0, 0));
 
 		// Extract info from header record.
-		it->size_	= strtol(rec.size, 0, 0);
-		it->path_	= StringDup(rec.name);
+		rec.Stat(&it->stat_);
+
+		it->size_ = it->stat_.st_size;
+
+		Dup(it->path_, rec.name);
+		Dup(it->user_, rec.uname);
+		Dup(it->group_, rec.gname);
+		Dup(it->link_, S_ISLNK(it->stat_.st_mode) ? rec.linkname : 0);
 
 		// Calculate span in blocks based on size (rounding size up).
 		int size	= it->size_;

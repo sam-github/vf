@@ -4,6 +4,9 @@
 // Copyright (c) 1999, Sam Roberts
 // 
 // $Log$
+// Revision 1.2  1999/04/24 04:41:46  sam
+// added support for symbolic links, and assorted bugfixes
+//
 // Revision 1.1  1999/04/11 06:45:36  sam
 // Initial revision
 //
@@ -25,10 +28,12 @@
 
 char VFTarFileEntity::buffer[BUFSIZ];
 
-VFTarFileEntity::VFTarFileEntity(TarArchive::iterator file) :
+VFTarFileEntity::VFTarFileEntity(const TarArchive::iterator& file) :
 	file_	(file)
 {
-	if(file_.Stat(&stat_) == -1) {
+//	file_ = file;
+
+	if(!file_.Stat(&stat_)) {
 		VFLog(0, "loading stat for %s failed: [%d] %s",
 			file_.Path(), file_.ErrorNo(), file_.ErrorString());
 		exit(1);
