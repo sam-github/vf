@@ -28,8 +28,7 @@ Unfortuneately, I've only recently discovered that QSSL has
 published a much better example of writing a virtual filesystem than
 they used to have, and that the example comes in the form
 of a framework, see iomanager2 (I<http://www.qnx.com/free/...iomanager2.tgz>).
-
-This framework redoes some of
+My framework redoes some of
 their work, but also does things not handled by their
 framework. I'll probably be reading theirs in detail soon,
 and hope to rip any useful ideas or code from it into mine.
@@ -155,15 +154,15 @@ Binaries:
 
 =item *
 
-I<http://toronto.qenesis.com/Sam/vf_ram.gz">
+I<http://toronto.qenesis.com/Sam/vf_ram.gz>
 
 =item *
 
-I<http://toronto.qenesis.com/Sam/vf_tar.gz">
+I<http://toronto.qenesis.com/Sam/vf_tar.gz>
 
 =item *
 
-I<http://toronto.qenesis.com/Sam/vf_pop.gz">
+I<http://toronto.qenesis.com/Sam/vf_pop.gz>
 
 =back
 
@@ -232,8 +231,8 @@ frame_to_gif(), etc., but what's the chance that Apache will have that
 API built in? Or that vmail will, when you try to send the current
 gif as an attachment?
 
-Another interesting OS is the FSF's HURD (I<http://www.gnu.org/software/hurd>
-, which is
+Another interesting OS is the FSF's HURD
+(I<http://www.gnu.org/software/hurd>), which is
 advertised to use the underlying Mach OS's message passing to 
 implement resource managers for things such as a virtual
 filesystem for easy access to ftp servers. I'm still waiting
