@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.8  1999/09/26 22:50:27  sam
+// reorganized the templatization, checking in prior to last cleanup
+//
 // Revision 1.7  1999/09/23 01:39:22  sam
 // first cut at templatization running ok
 //
@@ -114,10 +117,20 @@ struct PopInfo
 
 struct PopTask
 {
-	int Do(const PopRequest& request, VFTaskDataHandle* dh);
+public:
+	PopTask(const String& host, const String& user, String& pass) :
+		host(host), user(user), pass(pass)
+	{
+	}
+	int operator () (const PopRequest& request, VFDataIfx& dh);
+
+private:
+	const String host;
+	const String user;
+	const String pass;
 };
 
-class VFPop : public VFManager
+class VFPop : public VFManager, public VFCompleteIfx<PopInfo>
 {
 public:
 	VFPop(const char* host, const char* user, const char* pass, int mbuf, int sync);
@@ -139,7 +152,7 @@ private:
 	int		inmem_;
 	int		sync_;
 
-	VFWorkTeam<PopRequest, PopInfo, PopTask, VFPop> * team_;
+	VFWorkTeam<PopRequest, PopInfo, PopTask>* team_;
 
 #if 0
 	int SyncRetr	(int msg, istream** str);

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/09/26 22:50:27  sam
+// reorganized the templatization, checking in prior to last cleanup
+//
 // Revision 1.10  1999/09/23 01:39:22  sam
 // first cut at templatization running ok
 //
@@ -93,20 +96,11 @@ PopFail(const char* cmd, pop3& pop)
 // PopTask
 //
 
-int PopTask::Do(const PopRequest& request, VFTaskDataHandle* dh)
+int PopTask::operator () (const PopRequest& request, VFDataIfx& dh)
 {
+	VFLog(3, "VFPopTask::op() connecting...");
+
 	pop3	pop;
-
-	extern char *hostOpt, *userOpt, *passOpt;
-
-	char*	host = hostOpt;
-	char*	user = userOpt;
-	char*	pass = passOpt;
-
-	if(request.msgid == 2) raise(SIGUSR1); // simulate failure!
-
-	//VFLog(3, "VFTeamLead::Active::Worker::Start() connecting...");
-	VFLog(3, "VFPopTask::Do() connecting...");
 
     int fail = pop->connect(host);
 
@@ -132,7 +126,7 @@ int PopTask::Do(const PopRequest& request, VFTaskDataHandle* dh)
         return EACCES;
     }
 
-	VFLog(3, "VFTeamLead::Active::Worker::Start() retrieving...");
+	VFLog(3, "PopTask::op() retrieving...");
 
     istream& is = pop->retr(request.msgid);
 
@@ -148,7 +142,7 @@ int PopTask::Do(const PopRequest& request, VFTaskDataHandle* dh)
 			return errno;
 		}
 
-		int e = dh->Data(buf, n);
+		int e = dh.Data(buf, n);
 
 		if(e != EOK) {
 			return e;
@@ -206,18 +200,18 @@ int VFPopFile::Stat(pid_t pid, const String* path, int lstat)
 
 int VFPopFile::ReadLink(pid_t pid, const String& path)
 {
-    VFLog(2, "VFSymLinkEntity::ReadLink() pid %d path \"%s\" description \"%s\"",
+	VFLog(2, "VFSymLinkEntity::ReadLink() pid %d path '%s' description '%s'",
 		pid, (const char*) path, description_);
 
 	return EINVAL;
 
 #if 0
-// not working yet!
+	// not working yet!
 
-    reply->status = EOK;
-    strcpy(reply->path, description_);
+	reply->status = EOK;
+	strcpy(reply->path, description_);
 
-    return sizeof(*reply) + strlen(description_);
+	return sizeof(*reply) + strlen(description_);
 #endif
 }
 
@@ -384,7 +378,6 @@ VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem, in
 	}
 
 	Disconnect(pop);
-
 }
 
 void VFPop::Run(const char* mount, int verbosity)
@@ -396,7 +389,8 @@ void VFPop::Run(const char* mount, int verbosity)
 
 	signal(SIGCHLD, SigHandler);
 
-	team_ = VFWorkTeam<PopRequest, PopInfo, PopTask, VFPop>::Create(this, 1);
+	PopTask task(host_, user_, pass_);
+	team_ = VFWorkTeam<PopRequest, PopInfo, PopTask>::Create(*this, task, 1);
 
 	if(!team_) {
 		VFLog(0, "work team create failed: [%d] %s\n", VFERR(errno));
