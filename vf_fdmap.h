@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/09/27 02:52:14  sam
+// pulled VFPointer into its own header, it was useful elsewhere
+//
 // Revision 1.1  1999/08/09 15:12:51  sam
 // Initial revision
 //
@@ -33,33 +36,8 @@
 #include <wcvector.h>
 
 #include "vf.h"
+#include "vf_ptr.h"
 #include "vf_log.h"
-
-//
-// VFPointer differs from the normal C pointer in that it's default value
-// is well-defined (0), making it appropriate to use for containers that
-// create default initialized instances of their contained types.
-//
-// Seems impossible to declare this as a nested class of VFFdMap... a
-// weird Watcom bug?
-
-	template <class T>
-	class VFPointer
-	{
-	public:
-		VFPointer(T* i = 0) : i_(i) { }
-		VFPointer(const VFPointer& i) { i_ = i.i_; }
-
-		operator = (T* i) { i_ = i; }
-
-		operator T* () { return i_; }
-
-	//  int integer() { return i_; }
-
-	private:
-		T* i_;
-	};
-
 
 class VFFdMap
 {
