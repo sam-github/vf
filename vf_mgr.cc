@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/06/18 15:00:12  sam
+// doing some more error checking
+//
 // Revision 1.9  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -90,6 +93,8 @@ public:
 
 		// the documentation says that we CAN'T use 32-bit pointers as the handle
 		// since it's a 16 bit value... but they do it in the sample, so is it OK?
+		// Looking at <sys/fd.h>, looks like up to 24-bit might be ok...
+		assert((0xff000000 & (unsigned)ocb) == 0);
 		errno = EOK;
 		if(qnx_fd_attach(pid, fd, 0, 0, 0, 0, (unsigned) ocb) == -1)
 		{
@@ -126,6 +131,8 @@ private:
 
 int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 {
+	if(!root || !mount)	{ errno = EINVAL; return false; }
+
 	root_ = root;
 	mount_ = mount;
 
