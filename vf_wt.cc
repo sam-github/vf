@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/10/17 16:21:50  sam
+// team lead now kills it's process group/workers on exit
+//
 // Revision 1.4  1999/09/26 23:00:33  sam
 // moved all private definitions from vf_wt.h to vf_wt.cc, so only the
 // public interface is now visible in vf_wt.h
@@ -44,8 +47,6 @@
 
 #include "vf_wt.h"
 #include "vf_log.h"
-
-#include "vf_pop.h"
 
 //
 // Message types and definitions, used for communication between the
@@ -170,6 +171,8 @@ private:
 
 	static pid_t	sigproxy_;
 	static void		SigHandler(int signo);
+	static void		OnExit(void);
+	static void		KillWorkers(int signo = SIGTERM);
 
 	friend class Active;
 };
@@ -394,7 +397,15 @@ Start(Task& task)
 		return errno;
 	}
 
+	if(setpgid(0, 0) == -1) {
+		VFLog(1, "VFTeamLead::Start() setpgid(0,0) failed: [%d] %s", VFERR(errno));
+		return errno;
+	}
+
 	signal(SIGCHLD, &SigHandler);
+	signal(SIGTERM, &SigHandler);
+	signal(SIGINT, &SigHandler);
+	signal(SIGQUIT, &SigHandler);
 
 	return tl.Run();
 }
@@ -484,9 +495,45 @@ void VFTeamLead<Request,Task>::SigHandler(int signo)
 {
 	VFLog(3, "VFTeamLead::SigHandler() signo %d", signo);
 
-	if(signo == SIGCHLD) {
+	switch(signo)
+	{
+		// if a child died, trigger our sigproxy
+	case SIGCHLD:
 		Trigger(sigproxy_);
+		break;
+
+		// if we registered for one of these, or any other, signal, suicide
+	case SIGTERM:
+	case SIGINT:
+	case SIGQUIT:
+	default:
+		exit(EINTR);
+		break;
 	}
+}
+
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::OnExit(void)
+{
+	VFLog(3, "VFTeamLead::OnExit()");
+
+	KillWorkers(SIGTERM);
+}
+
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::
+KillWorkers(int signo)
+{
+	VFLog(3, "VFTeamLead::KillWorkers(%d)", signo);
+
+	void (*saved)(int);
+
+	// block signal, deliver it to our process group, then unblock it
+	saved = signal(signo, SIG_IGN);
+
+	kill(0, signo);
+
+	signal(signo, saved);
 }
 
 //
