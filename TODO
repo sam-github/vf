@@ -10,6 +10,8 @@
  - what happens when a read/write bigger than VFIoMsg can accept occurs?
  - cannot run find on a vfsys:
      Cannot recurse into './vf' - filesystem forms an infinite loop
+ - have to check eflag on an open, and reappend the trailing slash, or
+   something.
 
 * Permissions checking:
  - Need to do.
