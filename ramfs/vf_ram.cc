@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/12/05 06:19:42  sam
+// for some reason changing from String to Path requires that I also
+// change from the offsetof macro to the __offsetof builtin
+//
 // Revision 1.13  1999/11/25 04:27:18  sam
 // now integrates with mount command, when called mount_ram
 //
@@ -160,7 +164,7 @@ int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t* offset,
 
 	// ready to read nbytes into the data buffer from the offset of the
 	// "data" part of the write message
-	size_t dataOffset = offsetof(struct _io_write, data);
+	size_t dataOffset = __offsetof(struct _io_write, data);
 	unsigned incr = Readmsg(pid, dataOffset, &data_[*offset], nbytes);
 
 	// XXX use the optimization of data/len
