@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.3  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -77,20 +80,20 @@ VFSymLinkEntity::VFSymLinkEntity(uid_t uid, gid_t gid, mode_t perm, const char* 
 	linkto_[sizeof(linkto_)] = '\0';
 }
 
-int VFSymLinkEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
+int VFSymLinkEntity::Open(pid_t pid, const Path& path, int fd, int oflag, mode_t mode)
 {
 	VFLog(2, "VFSymLinkEntity::Open() pid %d path \"%s\"",
-		pid, (const char *) path);
+		pid, path.c_str());
 
 	fd = fd, oflag = oflag, mode = mode;
 
 	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::Stat(pid_t pid, const String& path, int lstat)
+int VFSymLinkEntity::Stat(pid_t pid, const Path& path, int lstat)
 {
 	VFLog(2, "VFSymLinkEntity::Stat() pid %d path \"%s\" lstat %d",
-		(const char *) path, lstat);
+		path.c_str(), lstat);
 
 	// If we're just a component in the path, rewrite it.
 	if(path != "")
@@ -107,18 +110,18 @@ int VFSymLinkEntity::Stat(pid_t pid, const String& path, int lstat)
 	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::ChDir(pid_t pid, const String& path)
+int VFSymLinkEntity::ChDir(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFSymLinkEntity::ChDir() pid %d path \"%s\"",
-		pid, (const char*) path);
+		pid, path.c_str());
 
 	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::Unlink(pid_t pid, const String& path)
+int VFSymLinkEntity::Unlink(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFSymLinkEntity::Unlink() pid %d path \"%s\"",
-		pid, (const char*) path);
+		pid, path.c_str());
 
 	if(path != "")
 	{
@@ -128,11 +131,11 @@ int VFSymLinkEntity::Unlink(pid_t pid, const String& path)
 	return ENOSYS;
 }
 
-int VFSymLinkEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
+int VFSymLinkEntity::MkSpecial(pid_t pid, const Path& path, mode_t mode,
 		const char* linkto)
 {
 	VFLog(2, "VFSymLinkEntity::MkSpecial() pid %d path \"%s\" mode %#x",
-		pid, (const char*) path, mode);
+		pid, path.c_str(), mode);
 
 	linkto = linkto;
 
@@ -141,10 +144,10 @@ int VFSymLinkEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
 	return RewriteOpenPath(pid, path);
 }
 
-int VFSymLinkEntity::ReadLink(pid_t pid, const String& path)
+int VFSymLinkEntity::ReadLink(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFSymLinkEntity::ReadLink() pid %d path \"%s\"",
-		pid, (const char*) path);
+		pid, path.c_str());
 
 	if(path != "") {
 		return RewriteOpenPath(pid, path);
@@ -162,21 +165,21 @@ int VFSymLinkEntity::ReadLink(pid_t pid, const String& path)
 	return ReplyMx(pid, 2, mx);
 }
 
-int VFSymLinkEntity::Insert(const String& path, VFEntity* entity)
+int VFSymLinkEntity::Insert(const Path& path, VFEntity* entity)
 {
-	VFLog(2, "VFSymLinkEntity::Insert(\"%s\")", (const char*) path);
+	VFLog(2, "VFSymLinkEntity::Insert(\"%s\")", path.c_str());
 
 	entity = entity;
 
 	return ENOTDIR;
 }
 
-int VFSymLinkEntity::RewriteOpenPath(pid_t pid, const String& path)
+int VFSymLinkEntity::RewriteOpenPath(pid_t pid, const Path& path)
 {
-	VFLog(2, "VFSymLinkEntity::RewriteOpenPath() pid rewrite \"%s\" as \"%s\"",
-		(const char*) path, linkto_);
+	VFLog(2, "VFSymLinkEntity::RewriteOpenPath() pid rewrite '%s' as '%s'",
+		path.c_str(), linkto_);
 
-	if((strlen(linkto_) + 1 + strlen(path)) > _MAX_PATH) {
+	if((strlen(linkto_) + 1 + path.size()) > _MAX_PATH) {
 		return ENAMETOOLONG;
 	}
 
@@ -190,13 +193,14 @@ int VFSymLinkEntity::RewriteOpenPath(pid_t pid, const String& path)
 	{
 		// append the sub-path they're really interested in
 		strcat(p, "/");
-		strcat(p, path);
+		strcat(p, path.c_str());
 	}
 
-	if(Writemsg(pid, offsetof(_io_open, path), p, strlen(p) + 1) == -1)
+	int o = __offsetof(_io_open, path);
+	if(Writemsg(pid, o, p, strlen(p) + 1) == -1)
 	{
 		VFLog(1, "VFSymLinkEntity Writemsg(pid %d off %d) failed: [%d] %s",
-			pid, offsetof(_io_open, path), errno, strerror(errno));
+			pid, __offsetof(_io_open, path), errno, strerror(errno));
 		return errno;
 	}
 

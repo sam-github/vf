@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.13  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -79,10 +82,10 @@
 // VFFileEntity
 //
 
-int VFFileEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
+int VFFileEntity::Open(pid_t pid, const Path& path, int fd, int oflag, mode_t mode)
 {
 	VFLog(2, "VFFileEntity::Open() pid %d path \"%s\" fd %d oflag %#x mode %#x",
-		pid, (const char *) path, fd, oflag, mode);
+		pid, path.c_str(), fd, oflag, mode);
 
 	if(path != "")
 	{
@@ -92,10 +95,10 @@ int VFFileEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t 
 	return FdAttach(pid, fd, new VFFileOcb(this));
 }
 
-int VFFileEntity::Stat(pid_t pid, const String& path, int lstat)
+int VFFileEntity::Stat(pid_t pid, const Path& path, int lstat)
 {
 	VFLog(2, "VFFileEntity::Stat() pid %d path \"%s\" lstat %d",
-		pid, (const char *) path, lstat);
+		pid, path.c_str(), lstat);
 
 	if(path != "")
 	{
@@ -105,19 +108,19 @@ int VFFileEntity::Stat(pid_t pid, const String& path, int lstat)
 	return ReplyInfo(pid);
 }
 
-int VFFileEntity::ChDir(pid_t pid, const String& path)
+int VFFileEntity::ChDir(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFFileEntity::ChDir() pid %d \"%s\"",
-		pid, (const char *) path);
+		pid, path.c_str());
 
 	return ENOTDIR;
 }
 
-int VFFileEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
+int VFFileEntity::MkSpecial(pid_t pid, const Path& path, mode_t mode,
 		const char* linkto)
 {
 	VFLog(2, "VFFileEntity::MkSpecial() pid %d path \"%s\" mode %#x",
-		pid, (const char *) path, mode);
+		pid, path.c_str(), mode);
 
 	linkto = linkto;
 
@@ -126,10 +129,10 @@ int VFFileEntity::MkSpecial(pid_t pid, const String& path, mode_t mode,
 	return ENOTDIR;
 }
 
-int VFFileEntity::ReadLink(pid_t pid, const String& path)
+int VFFileEntity::ReadLink(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFFileEntity::ReadLink() pid %d path \"%s\"",
-		pid, (const char *) path);
+		pid, path.c_str());
 
 	if(path != "") {
 		return ENOTDIR;
@@ -137,9 +140,9 @@ int VFFileEntity::ReadLink(pid_t pid, const String& path)
 	return EINVAL;
 }
 
-int VFFileEntity::Insert(const String& path, VFEntity* entity)
+int VFFileEntity::Insert(const Path& path, VFEntity* entity)
 {
-	(const char*) path, entity = entity;
+	path.c_str(), entity = entity;
 
 	return ENOTDIR;
 }

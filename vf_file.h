@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.10  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -70,14 +73,14 @@ public:
 	VFFileEntity(uid_t uid, gid_t gid, mode_t perm) :
 		VFEntity(uid, gid, S_IFREG | (perm & 0777)) {}
 
-	int Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode);
-	int Stat    (pid_t pid, const String& path, int lstat);
-	int ChDir   (pid_t pid, const String& path);
-	int ReadLink(pid_t pid, const String& path);
-	int MkSpecial(pid_t pid, const String& path, mode_t mode, const char* linkto);
+	int Open(pid_t pid, const Path& path, int fd, int oflag, mode_t mode);
+	int Stat    (pid_t pid, const Path& path, int lstat);
+	int ChDir   (pid_t pid, const Path& path);
+	int ReadLink(pid_t pid, const Path& path);
+	int MkSpecial(pid_t pid, const Path& path, mode_t mode, const char* linkto);
 
 	int Stat	(struct stat* s) { return VFEntity::Stat(s); }
-	int	Insert(const String& path, VFEntity* entity);
+	int	Insert(const Path& path, VFEntity* entity);
 
 	// API extensions for use by VFFileOcb
 	virtual int Write(pid_t pid, size_t nbytes, off_t* offset,

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.12  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -135,17 +138,17 @@ public:
 
 	~VFDirEntity();
 
-	int Open	(pid_t pid, const String& path, int fd, int oflag, mode_t mode);
-	int Stat	(pid_t pid, const String& path, int lstat);
-	int ChDir	(pid_t pid, const String& path);
-	int ReadLink(pid_t pid, const String& path);
-	int MkSpecial(pid_t pid, const String& path, mode_t mode, const char* linkto);
+	int Open	(pid_t pid, const Path& path, int fd, int oflag, mode_t mode);
+	int Stat	(pid_t pid, const Path& path, int lstat);
+	int ChDir	(pid_t pid, const Path& path);
+	int ReadLink(pid_t pid, const Path& path);
+	int MkSpecial(pid_t pid, const Path& path, mode_t mode, const char* linkto);
 
 	// fd-based services supported by directories
 	int		ReadDir	(int index, struct dirent* de);
 
 	// Other
-	int Insert(const String& path, VFEntity* entity);
+	int Insert(const Path& path, VFEntity* entity);
 
 	// Public Accessors (unused by vf framework)
 	int Entries () const
@@ -167,13 +170,13 @@ public:
 	{
 		// default ctor required by Watcom vector
 		EntityNamePair() : entity(0) { }
-		EntityNamePair(VFEntity* entity_, const String& name_) :
+		EntityNamePair(VFEntity* entity_, const Path& name_) :
 			entity(entity_), name(name_)
 		{
 		}
 
 		VFEntity* entity;
-		String name;
+		Path name;
 	};
 
 private:
@@ -181,16 +184,16 @@ private:
 
 	// Define our wrapper to avoid op[] adding null entries to the map,
 	// and so that we have a find that behaves the way I want.
-	class EntityMap : public WCValHashDict<String, VFEntity*>
+	class EntityMap : public WCValHashDict<Path, VFEntity*>
 	{
 		public:
-			EntityMap(unsigned (*hashfn)(const String&)) :
-				WCValHashDict<String,VFEntity*>(hashfn)
+			EntityMap(unsigned (*hashfn)(const Path&)) :
+				WCValHashDict<Path,VFEntity*>(hashfn)
 			{}
-			VFEntity* find(const String& name) const
+			VFEntity* find(const Path& name) const
 			{
 				VFEntity* entity = 0;
-				WCValHashDict<String,VFEntity*>::find(name, entity);
+				WCValHashDict<Path,VFEntity*>::find(name, entity);
 				return entity;
 			}
 	};
@@ -201,11 +204,11 @@ private:
 
 	VFEntityFactory* factory_;
 
-	void SplitPath(const String& path, String& lead, String& tail);
+	void SplitPath(const Path& path, Path& lead, Path& tail);
 	void InitInfo(mode_t mode, uid_t uid = -1, gid_t gid = -1);
 
 	// used by the WC hash dictionary
-	static unsigned Hash(const String& key);
+	static unsigned Hash(const Path& key);
 };
 
 class VFDirOcb : public VFOcb

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.17  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.16  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -114,10 +117,10 @@ VFDirEntity::~VFDirEntity()
 	VFLog(3, "VFDirEntity::~VFDirEntity()");
 }
 
-int VFDirEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode)
+int VFDirEntity::Open(pid_t pid, const Path& path, int fd, int oflag, mode_t mode)
 {
 	VFLog(2, "VFDirEntity::Open() pid %d path \"%s\" fd %d oflag %#x mode %#x",
-		pid, (const char *) path, fd, oflag, mode);
+		pid, path.c_str(), fd, oflag, mode);
 
 	// check permissions...
 
@@ -126,8 +129,8 @@ int VFDirEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t m
 		return FdAttach(pid, fd, new VFDirOcb(this));
 	}
 
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	VFEntity* entity = map_.find(lead);
@@ -167,18 +170,18 @@ int VFDirEntity::Open(pid_t pid, const String& path, int fd, int oflag, mode_t m
 	return ENOENT;
 }
 
-int VFDirEntity::Stat(pid_t pid, const String& path, int lstat)
+int VFDirEntity::Stat(pid_t pid, const Path& path, int lstat)
 {
 	VFLog(2, "VFDirEntity::Stat() pid %d path \"%s\" lstat %d",
-		pid, (const char *) path, lstat);
+		pid, path.c_str(), lstat);
 
 	if(path == "")
 	{
 		return ReplyInfo(pid);
 	}
 
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	VFEntity* entity = map_.find(lead);
@@ -192,10 +195,10 @@ int VFDirEntity::Stat(pid_t pid, const String& path, int lstat)
 	return entity->Stat(pid, tail, lstat);
 }
 
-int VFDirEntity::ChDir(pid_t pid, const String& path)
+int VFDirEntity::ChDir(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFDirEntity::ChDir() pid %d path \"%s\")",
-		pid, (const char *) path);
+		pid, path.c_str());
 
 	if(path == "")
 	{
@@ -204,8 +207,8 @@ int VFDirEntity::ChDir(pid_t pid, const String& path)
 		return EOK;
 	}
 
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	VFEntity* entity = map_.find(lead);
@@ -220,11 +223,11 @@ int VFDirEntity::ChDir(pid_t pid, const String& path)
 	return entity->ChDir(pid, tail);
 }
 
-int VFDirEntity::MkSpecial(pid_t pid, const String& path,
+int VFDirEntity::MkSpecial(pid_t pid, const Path& path,
 		mode_t mode, const char* linkto)
 {
 	VFLog(2, "VFDirEntity::MkSpecial() pid %d path \"%s\" mode %#x",
-		pid, (const char *) path, mode);
+		pid, path.c_str(), mode);
 
 	if(path == "")
 	{
@@ -232,8 +235,8 @@ int VFDirEntity::MkSpecial(pid_t pid, const String& path,
 	}
 
 	// recurse down to directory where special is to be made
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	if(tail != "")
@@ -275,18 +278,18 @@ int VFDirEntity::MkSpecial(pid_t pid, const String& path,
 	return e;
 }
 
-int VFDirEntity::ReadLink(pid_t pid, const String& path)
+int VFDirEntity::ReadLink(pid_t pid, const Path& path)
 {
 	VFLog(2, "VFDirEntity::ReadLink() pid %d path \"%s\"",
-		pid, (const char *) path);
+		pid, path.c_str());
 
 	if(path == "")
 	{
 		return EINVAL;
 	}
 
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	VFEntity* entity = map_.find(lead);
@@ -310,23 +313,23 @@ int VFDirEntity::ReadDir(int index, dirent* de)
 	EntityNamePair* pair = index_[index];
 	assert(pair);
 
-	assert(strlen(pair->name) <= NAME_MAX);
-	strcpy(de->d_name, pair->name);
+	assert(strlen(pair->name.c_str()) <= NAME_MAX);
+	strcpy(de->d_name, pair->name.c_str());
 	pair->entity->Stat(&de->d_stat);
 
 	return EOK;
 }
 
-int VFDirEntity::Insert(const String& path, VFEntity* entity)
+int VFDirEntity::Insert(const Path& path, VFEntity* entity)
 {
-	VFLog(2, "VFDirEntity::Insert() path \"%s\"", (const char *) path);
+	VFLog(2, "VFDirEntity::Insert() path \"%s\"", path.c_str());
 
 	assert(path != "");
 	assert(entity);
-	assert(path[0] != '/');
+	assert(path.c_str()[0] != '/');
 
-	String lead;
-	String tail;
+	Path lead;
+	Path tail;
 	SplitPath(path, lead, tail);
 
 	// no tail, so lead is the name of entity
@@ -377,7 +380,7 @@ int VFDirEntity::Insert(const String& path, VFEntity* entity)
 	return sub->Insert(tail, entity);
 }
 
-void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
+void VFDirEntity::SplitPath(const Path& path, Path& lead, Path& tail)
 {
 	int sep = path.index("/");
 	if(sep == -1)
@@ -407,9 +410,9 @@ void VFDirEntity::InitInfo(mode_t mode, uid_t uid, gid_t gid)
 	if(gid != -1) { info_.gid = gid; }
 }
 
-unsigned VFDirEntity::Hash(const String& key)
+unsigned VFDirEntity::Hash(const Path& key)
 {
-	const char* s = key;
+	const char* s = key.c_str();
 
 	assert(s);
 

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.12  1999/10/17 16:22:41  sam
 // Reinstalled a clean Watcom10.6, and string.hpp is String.h now.
 //
@@ -74,7 +77,7 @@
 #include <sys/io_msg.h>
 #include <sys/sys_msg.h>
 
-#include <String.h>
+#include "vf_path.h"
 
 // forward references
 class VFEntity;
@@ -158,20 +161,20 @@ public:
 	virtual ~VFEntity() = 0;
 
 	// path-based calls
-	virtual int	Open(pid_t pid, const String& path, int fd, int oflag, mode_t mode) = 0;
-//	virtual int Handle(pid_t pid, const String& path, int oflag, mode_t mode, int eflag) = 0;
-	virtual int	Stat	(pid_t pid, const String& path, int lstat) = 0;
-	virtual int	ChDir	(pid_t pid, const String& path) = 0;
-	virtual int	Unlink	(pid_t pid, const String& path) /* XXX = 0*/;
-	virtual int	ReadLink(pid_t pid, const String& path) = 0;
-	virtual int	MkSpecial(pid_t pid, const String& path, mode_t mode, const char* linkto) = 0;
+	virtual int	Open(pid_t pid, const Path& path, int fd, int oflag, mode_t mode) = 0;
+//	virtual int Handle(pid_t pid, const Path& path, int oflag, mode_t mode, int eflag) = 0;
+	virtual int	Stat	(pid_t pid, const Path& path, int lstat) = 0;
+	virtual int	ChDir	(pid_t pid, const Path& path) = 0;
+	virtual int	Unlink	(pid_t pid, const Path& path) /* XXX = 0*/;
+	virtual int	ReadLink(pid_t pid, const Path& path) = 0;
+	virtual int	MkSpecial(pid_t pid, const Path& path, mode_t mode, const char* linkto) = 0;
 
 	virtual int	Chmod   (pid_t pid, mode_t mode);
 	virtual int	Chown   (pid_t pid, uid_t uid, gid_t gid);
 	virtual int	Fstat   (pid_t pid);
 	virtual int	Stat    (struct stat* s);
 
-	virtual int	Insert(const String& path, VFEntity* entity) = 0;
+	virtual int	Insert(const Path& path, VFEntity* entity) = 0;
 
 	// Helper methods
 	int ReplyStatus	(pid_t pid, int status);

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/12/05 01:50:24  sam
+// replaced String with a custom Path class
+//
 // Revision 1.4  1999/08/09 15:29:29  sam
 // distinct inode numbers implemented, now find works
 //
@@ -72,10 +75,10 @@ VFEntity::~VFEntity()
 	VFLog(3, "VFEntity::~VFEntity()");
 }
 
-int VFEntity::Unlink(pid_t pid, const String& path)
+int VFEntity::Unlink(pid_t pid, const Path& path)
 {
     VFLog(2, "VFDirEntity::Unlink() pid %d path \"%s\"",
-        pid, (const char *) path);
+        pid, path.c_str());
 
     return ENOSYS;
 }
