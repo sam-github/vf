@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.7  1999/06/20 10:09:06  sam
+// Made InitStat a protected member of the class that had the stat_ data.
+//
 // Revision 1.6  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -67,6 +70,8 @@ public:
 
 protected:
 	struct stat stat_;
+
+	void InitStat(mode_t mode);
 };
 
 class VFFileOcb : public VFOcb
@@ -105,7 +110,6 @@ private:
 	off_t dataLen_;  // length of data buffer
 	off_t fileSize_; // size of file data (may be less than dataLen_)
 
-	void InitStat(mode_t mode);
 };
 
 #endif
