@@ -1,23 +1,34 @@
 * The ocb map could store a pointer to a OcbMapNode object that had the
 reference counting stuff in it, leaving the Ocb pure abstract. this makes
-sense, since the ocb doesn't need this info.
+sense, since the ocb doesn't need this stuff, it's an interface that
+has some data inappropriately stuffed in that's convenient for the OcbMap.
+But it's also pretty convenient...
 
-* Support hard links? either way I need a link count in entities to support
-removing of an entity with open fds to that entity.
-
-* Some methods are returning 0 for "unsupported by this ocb", which will
-trigger an assert, I think I need to provide defaults for the
+* Consider providing defaults for the
 dir/file specific methods (but not for generic ones like fstat()) that
-correctly return ENOTDIR, or whatever is appropriate.
+correctly return ENOTDIR, or whatever is appropriate. The problem is
+the correct errno depends on the type, for some of the calls.
 
-* QNX Fsys directories support read and write. Should I? Why?
+* QNX Fsys directories support read() and write(). Should I? Why? How?
 
 * Write an app that tests the file system...
 
-* Make request pointers to Ocb functions "const" and reorganize ocb functios
+* Make request pointers to Ocb methods "const" and reorganize ocb functions
 into generic/file specific/dir specific.
+
+* All methods should have the client pid as the first arg, its generally
+  useful.
 
 * Does open honor O_EXCL if O_CREAT is requested?
 
-* How extensible is it? Implement VFsys_tar.
+* qnx_fd_attach() ok with 32-bit pointers?
+
+* Totally missing any permissions checks on anything...
+
+* Handle unlink(), and allow unlinking of the prefix to cause exit() of the
+virtual fsys. Will need a link count in entities to support this.
+
+* MkSpecial() is wrong, I think, it should push the request down the to through
+the subdirs, not the Insert() request, subdirs should handl their own entity
+creation!
 
