@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/09/27 00:17:41  sam
+// using new list() command to read the whole message list, rather than
+// piece by piece.
+//
 // Revision 1.12  1999/09/26 23:40:21  sam
 // moved the popfile into it's own module
 //
@@ -174,17 +178,14 @@ VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem) :
 
 	if(!Connect(pop)) { exit(1); }
 
-	int count;
-	if(!pop->stat(&count)) { PopFail("stat", pop); }
+	istream& list = pop->list();
+	if(!list) { PopFail("list", pop); }
 
-	for(int msg = 1; msg <= count; ++msg)
+	int msg;
+	int size;
+	while(list >> msg >> size)
 	{
-		int size;
-
-		if(!pop->list(msg, &size)) { PopFail("list", pop); }
-
 		int e = root_.Insert(ItoA(msg), new VFPopFile(msg, *this, size));
-
 		if(e != EOK)
 		{
 			VFLog(0, "insert msg %d failed: [%d] %s", msg, e, strerror(e));
@@ -424,7 +425,7 @@ int GetOpts(int argc, char* argv[])
 	}
 
 	if(!(accountOpt = argv[optind])) {
-		fprintf(stderr, "no account specified!\n");
+		fprintf(stderr, "no account specified (try -h for help)!\n");
 		exit(1);
 	}
 
