@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.2  1999/11/25 04:22:19  sam
+// fixed uninitialized data, and the Next() member function
+//
 // Revision 1.1  1999/11/24 03:43:12  sam
 // Initial revision
 //
@@ -228,6 +231,10 @@ struct Tar
 		}
 		int Close()
 		{
+			sb_ = 0;
+			seek_ = offset_ = span_ = size_ = errno_ = 0;
+			errinfo_ = 0;
+
 			return 1;
 		}
 		int Read(off_t seek, void* data, size_t size)
@@ -599,8 +606,11 @@ struct Tar
 			if(!Archive::Open(sb)) { return 0; }
 
 			// need to advance to our member, unless member is null
+			if(!file && file_) {
+				file = file_;
+			}
 			while(Next()) {
-				if(!file || Path() == file) { return 1; }
+				if(!file || strcmp(Path(), file) == 0) { return 1; }
 			}
 			return 0;
 		}
@@ -622,15 +632,7 @@ struct Tar
 				delete filebuf_;
 				filebuf_ = 0;
 			}
-			return 1;
-		}
-		int Next()
-		{
-			if(!file_) {
-				return Archive::Next();
-			}
-			Err("Next", EINVAL);
-			return 0;
+			return Tar::Archive::Close();
 		}
 	};
 };
