@@ -27,7 +27,7 @@ case.
 Unfortuneately, I've only recently discovered that QSSL has
 published a much better example of writing a virtual filesystem than
 they used to have, and that the example comes in the form
-of a framework, see iomanager2 (I<http://www.qnx.com/free/...iomanager2.tgz>).
+of a framework, see iomanager2 (I<ftp://ftp.qnx.com/usr/free/qnx4/os/samples/misc/iomanager2.tgz>).
 My framework redoes some of
 their work, but also does things theirs doesn't.
 I'll probably be reading the new example in detail soon,
