@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.3  1999/12/05 01:52:58  sam
+// Implmented Member::Seek(), and Stat().
+//
 // Revision 1.2  1999/11/25 04:22:19  sam
 // fixed uninitialized data, and the Next() member function
 //
@@ -43,8 +46,6 @@
 #include <strstream.h>
 #include <tar.h>
 #include <unistd.h>
-
-#include <String.h>
 
 #include <sys/stat.h>
 
@@ -370,6 +371,8 @@ struct Tar
 		off_t			seek_;
 		off_t			size_;
 
+		struct stat		stat_;
+
 		int				err_no;
 		const char*		err_info;
 
@@ -405,11 +408,10 @@ struct Tar
 			rec_	= *tar->Record();
 			offset_	= tar->Offset();
 
-			struct stat stat;
-			rec_.Stat(&stat);
-			size_ = stat.st_size;
+			rec_.Stat(&stat_);
+			size_ = stat_.st_size;
 		}
-		friend class /*Tar::*/ Archive;
+		friend class Archive;
 
 	public:
 		int	ErrorNo() const
@@ -424,8 +426,15 @@ struct Tar
 		{
 			return err_info;
 		}
-		int Seek(off_t seek);
-
+		int Seek(off_t seek)
+		{
+			if(seek > size_ || seek < 0) {
+				Err("seek out of range", EINVAL);
+				return 0;
+			}
+			seek_ = seek;
+			return 1;
+		}
 		int Read(void* buf, size_t nbytes)
 		{
 			if(seek_ > size_) {
@@ -443,9 +452,12 @@ struct Tar
 			}
 			return ret;
 		}
-//		const struct stat* Stat() const;
+		const struct stat* Stat() const
+		{
+			return &stat_;
+		}
 
-		int Stat(struct stat* stat) const;
+		int Stat(struct stat* stat) const { stat = stat; return 0; }
 
 		int Record(Tar::Record* record) const;
 
@@ -605,13 +617,14 @@ struct Tar
 
 			if(!Archive::Open(sb)) { return 0; }
 
-			// need to advance to our member, unless member is null
+			// need to advance to our member, or the first
 			if(!file && file_) {
 				file = file_;
 			}
 			while(Next()) {
 				if(!file || strcmp(Path(), file) == 0) { return 1; }
 			}
+			
 			return 0;
 		}
 		int Close()
