@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/06/20 10:08:13  sam
+// dev_*() and tc*() messages now recognized.
+//
 // Revision 1.10  1999/06/18 15:00:12  sam
 // doing some more error checking
 //
@@ -394,6 +397,7 @@ static const char* VFManager::MessageName(msg_t type)
 	case 0x0115: return "IO_STAT";
 	case 0x0116: return "IO_SELECT";
 	case 0x0117: return "IO_QIOCTL";
+
 	case 0x0202: return "FSYS_MKSPECIAL";
 	case 0x0203: return "FSYS_REMOVE";
 	case 0x0204: return "FSYS_LINK";
@@ -420,7 +424,32 @@ static const char* VFManager::MessageName(msg_t type)
 	case 0x0219: return "FSYS_INFO";
 	case 0x021A: return "FSYS_FDINFO";
 	case 0x021B: return "FSYS_MOUNT_DRIVER32";
-	default: return "unknown";
+
+	case 0x0310: return "DEV_TCGETATTR";
+	case 0x0311: return "DEV_TCSETATTR";
+	case 0x0312: return "DEV_TCSENDBREAK";
+	case 0x0313: return "DEV_TCDRAIN";
+	case 0x0314: return "DEV_TCFLUSH";
+	case 0x0315: return "DEV_TCFLOW";
+	case 0x0316: return "DEV_TCGETPGRP";
+	case 0x0317: return "DEV_TCSETPGRP";
+	case 0x0318: return "DEV_INSERTCHARS";
+	case 0x0319: return "DEV_MODE";
+	case 0x031A: return "DEV_WAITING";
+	case 0x031B: return "DEV_INFO";
+	case 0x031C: return "DEV_ARM";
+	case 0x031D: return "DEV_STATE";
+	case 0x031E: return "DEV_READ";
+	case 0x031F: return "DEV_WRITE";
+	case 0x0320: return "DEV_FDINFO";
+	case 0x0321: return "DEV_TCSETCT";
+	case 0x0322: return "DEV_TCDROPLINE";
+	case 0x0323: return "DEV_SIZE";
+	case 0x0324: return "DEV_READEX";
+	case 0x0325: return "DEV_OSIZE";
+	case 0x0326: return "DEV_RESET";
+
+	default: return "UNKNOWN";
 	}
 }
 
