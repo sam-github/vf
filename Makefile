@@ -32,7 +32,7 @@ $(DEP): $(SRC) $(INC)
 	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
 
 clean:
-	rm -f *.o *.err core *.dmp
+	rm -f *.o *.err core *.dmp *.log
 
 empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort
@@ -44,8 +44,8 @@ export: all
 run: stop vf_test
 	vf_test -vv &
 
-log: stop vf_test
-	vf_test -vv > vf_test.log &
+noisy: stop vf_test
+	vf_test -vvvv &
 
 debug: stop vf_test
 	wd vf_test -vvvv &
@@ -76,6 +76,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.8  1998/04/28 07:26:43  sroberts
+# changed log target to noisy target
+#
 # Revision 1.7  1998/04/28 01:53:13  sroberts
 # implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 # a directory tree into the virtual filesystem though, checking in anyhow
