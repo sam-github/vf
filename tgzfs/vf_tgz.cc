@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  2000/01/13 02:31:29  sam
+// updated usage, and fixed bug with absolute tar paths
+//
 // Revision 1.3  1999/12/05 06:11:45  sam
 // converted to use Path instead of String
 //
@@ -47,6 +50,47 @@
 #include <tar/tararch.h>
 
 #include "vf_tgzfile.h"
+
+#ifdef __USAGE
+%C - mounts a compressed tar archive as a virtual filesystem
+
+usage: vf_tgz [-hvd] [-F filter] file [vf]
+    -h   Print this helpful message.
+    -v   Increase the verbosity level.
+    -d   Don't become a daemon, default is to fork into the background after
+         reading the tar file.
+    -F   Filter used to decompress the file (default is to guess using
+         the same techniques as the 'file' utility, searching for magic
+         bytes - so the name of the file is irrelevant). It is called
+         as 'filter <file> | ...'.
+
+Mounts 'file' as a virtual (read-only) filesystem at 'vf'. It can be
+unmounted in the standard way, causing the virtual filesystem manager
+to exit.
+
+If there is only a single top-level directory in the tar archive, and
+'vf' was not explicitly specified, then that directory is elided, and
+it's name is used as the value of 'vf'. Otherwise, the base name of
+the archive, minus an extension, is used as 'vf'.
+
+This heuristic is an attempt at dealing with the common case of archived
+sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
+leading path element out, and naming the virtual filesystem path after
+that leading element.
+
+It isn't clear what the correct way of dealing with absolute paths is. The
+current behaviour is:
+
+  - for archive members the leading slash, if present, is stripped, before
+    placing the member in the virtual filesystem,
+
+  - for archived symbolic links to absolute paths, the target path of the
+    symbolic link is left as it is.
+
+In the second case, the archive could be searched for a member matching the
+target path, and if present the symbolic link could be adjusted to refer to
+that member.
+#endif
 
 //
 // VFTgzEntityFactory
@@ -96,45 +140,6 @@ private:
 	gid_t	gid_;
 };
 
-//
-// Usage and Options
-//
-
-#ifdef __USAGE
-%C - mounts a compressed tar archive virtual filesystem
-
-usage: vf_tgz [-hvde] file [vf]
-    -h   Print this helpful message.
-    -v   Increase the verbosity level.
-    -d   Don't become a daemon, default is to fork into the background after
-         reading the tar file.
-    -e   Elide top-level directory if there is only one, and use it's
-         name for the mount point if 'vf' is not specified.
-
-Mounts 'file' as a virtual (read-only) filesystem at 'vf', which defaults
-to the base name of the file, without any extensions. The file system can
-be unmounted by doing a umount on the vfsys path (causing vf_tgz
-to exit).
-
-It isn't clear what the correct way of dealing with absolute paths is. The
-current behaviour is:
-
-  - for archive members the leading slash, if present, is stripped, before
-    placing the member in the virtual filesystem,
-
-  - for archived symbolic links to absolute paths, the target path of the
-    symbolic link is left as it is.
-
-In the second case, the archive could be searched for a member matching the
-target path, and if present the symbolic link could be adjusted to refer to
-that member.
-
-The -e option is an attempt at dealing with the common case of archived
-sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
-leading path element out, and naming the virtual filesystem path after
-that leading element. It may become the default because I use it almost
-all the time.
-#endif
 
 //
 // vf_tgz: globals
@@ -142,13 +147,13 @@ all the time.
 
 int		vOpt	= 0;
 char*	pathOpt	= 0;
-int		eOpt	= 0;
 int		dOpt	= 0;
+char*	FOpt	= 0;
 char*	tarOpt	= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvdet:")) != -1; )
+	for(int c; (c = getopt(argc, argv, "hvdF:t:")) != -1; )
 	{
 		switch(c)
 		{
@@ -165,8 +170,8 @@ int GetOpts(int argc, char* argv[])
 			dOpt = 1;
 			break;
 
-		case 'e':
-			eOpt = 1;
+		case 'F':
+			FOpt = optarg;
 			break;
 
 		case 't':	// ignore the -t option passed by 'mount'
@@ -200,20 +205,31 @@ void main(int argc, char* argv[])
 	VFTgzEntityFactory* factory = new VFTgzEntityFactory;
 	VFDirEntity* root = factory->AutoDir();
 
-	Tar::Reader tar(tarOpt, Tar::Reader::Method('g'));
+	Tar::Reader tar(
+			tarOpt,
+			FOpt ? Tar::Reader::FILTER : Tar::Reader::GUESS,
+			FOpt);
 	if(!tar.Open())
 	{
-		VFLog(0, "Reader::Open() said %s failed: [%d] %s",
-			tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
+		if(tar.ErrorNo() == ENOENT) {
+			VFLog(0, "No standard tar headers found, is this a tar archive?");
+		} else {
+			VFLog(0, "Reader::Open() said %s failed: [%d] %s",
+				tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
+		}
 		exit(1);
 	}
 
 	do {
-		VFLog(2, "next: %s", tar.Path());
+		VFLog(2, "next '%s'", tar.Path());
 
 		struct stat stat;
 		tar.Record()->Stat(&stat);
 		int type = S_IFMT & stat.st_mode;
+
+		const char* path = tar.Path();
+		if(*path == '/')
+			path++;
 
 		switch(type)
 		{
@@ -223,11 +239,11 @@ void main(int argc, char* argv[])
 		case S_IFREG: {
 			Path to(tarOpt);
 
-			int e = root->Insert(tar.Path(), factory->CreateFile(tar));
+			int e = root->Insert(path, factory->CreateFile(tar));
 		  }	break;
 
 		case S_IFLNK: {
-			int e = root->Insert(tar.Path(), factory->CreateLink(tar.LinkTo()));
+			int e = root->Insert(path, factory->CreateLink(tar.LinkTo()));
 		  }	break;
 
 		default:
@@ -243,7 +259,7 @@ void main(int argc, char* argv[])
 	VFEntity* top = root;
 
 	// check if there is only one top-level directory, and elide it if so
-	if(eOpt && root->Entries() == 1)
+	if(!pathOpt && root->Entries() == 1)
 	{
 		VFDirEntity::EntityNamePair* pair = root->EnPair(0);
 		
@@ -251,9 +267,7 @@ void main(int argc, char* argv[])
 		{
 			delete top;
 			top = pair->entity;
-		}
-		if(!pathOpt)
-		{
+
 			ostrstream s;
 			s << pair->name << '\0';
 			pathOpt = s.str();
@@ -270,26 +284,12 @@ void main(int argc, char* argv[])
 		strcpy(pathOpt, path);
 	}
 
-	if(!dOpt)
-	{
-		// go into background
-
-		switch(fork())
-		{
-		case 0:
-			break;
-		case -1:
-			VFLog(0, "fork failed: [%d] %s", errno, strerror(errno));
-			exit(1);
-		default:
-			exit(0);
-		}
-	}
-
 	if(!vfmgr.Init(top, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
+
+	vfmgr.Start(dOpt);
 
 	vfmgr.Run();
 }
