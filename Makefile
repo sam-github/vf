@@ -8,7 +8,7 @@ VERSION=vf-$(shell cat Version)
 prefix	= /usr/local
 
 CXXFLAGS	= -w2 $(OFLAGS)
-OFLAGS		= -Oeilrsx #-g
+OFLAGS		= -Oeilrsx -g
 LDFLAGS 	= -M -T1 $(OFLAGS)
 LDLIBS		= -l vf.lib
 POD2HTMLFLAGS = --title="A C++ Framework for QNX Virtual Filesystems"
@@ -118,8 +118,17 @@ release: docs
 	use mount_tar > release/mount_tar.usage
 	use mount_tgz > release/mount_tgz.usage
 	cp vf.html release/
+	cp tar/untar release/
+	cp ramfs/vf_ram release/
+	cp tarfs/vf_tar release/
+	cp tgzfs/vf_tgz release/
+	cp popfs/vf_pop release/
+	for x in release/vf_*; do wstrip $$x; done
 
 # $Log$
+# Revision 1.21  2000/01/13 03:18:56  sam
+# including binaries in releae
+#
 # Revision 1.20  2000/01/13 02:28:03  sam
 #  path now has a custom allocator
 #
