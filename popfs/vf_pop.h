@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/07/19 15:23:20  sam
+// can make aribtrary info show up in the link target, now just need to get
+// that info...
+//
 // Revision 1.1  1999/06/20 17:21:53  sam
 // Initial revision
 //
@@ -44,6 +48,8 @@ public:
 	PopFile(int msg, PopDir& dir, int size);
 	~PopFile();
 
+	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
+
 	int Write(pid_t pid, size_t nbytes, off_t offset);
 	int Read(pid_t pid, size_t nbytes, off_t offset);
 
@@ -52,22 +58,27 @@ private:
 	int			msg_;
 	istream*	data_;
 	int			size_;
+
+	char*		description_;
 };
 
 class PopDir : public VFDirEntity
 {
 public:
-	PopDir(const char* host, const char* user, const char* pass);
+	PopDir(const char* host, const char* user, const char* pass, int mbuf);
 
 	istream* Retr(int msg);
 
 private:
+	iostream* Stream() const;
+
 	int Connect(pop3& pop);
 	int Disconnect(pop3& pop);
 
-	/*String*/const char*	host_;
-	/*String*/const char*	user_;
-	/*String*/const char*	pass_;
+	String	host_;
+	String	user_;
+	String	pass_;
+	int		mbuf_;
 };
 
 #endif

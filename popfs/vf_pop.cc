@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/07/19 15:23:20  sam
+// can make aribtrary info show up in the link target, now just need to get
+// that info...
+//
 // Revision 1.4  1999/06/21 12:48:02  sam
 // caches mail on disk instead of file (by default), and reports a sys version
 //
@@ -68,13 +72,34 @@ PopFail(const char* cmd, pop3& pop)
 //
 
 PopFile::PopFile(int msg, PopDir& pop, int size) :
-	dir_(pop), msg_(msg), data_(0)
+	dir_(pop), msg_(msg), data_(0), description_(0)
 {
-	InitStat(S_IRUSR);
+	InitStat(S_IRUSR, S_IFLNK);
 	stat_.st_size = size_ = size;
+
+	ostrstream os;
+	os << "TBD" << '\0';
+	description_ = os.str();
 }
 
-PopFile::~PopFile() { delete data_; }
+PopFile::~PopFile()
+{
+	delete data_;
+	delete description_;
+}
+
+int PopFile::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply)
+{
+    VFLog(2, "VFSymLinkEntity::ReadLink(\"%s\") description %s",
+		(const char*) path, description_);
+
+    req = req; reply = reply;
+
+    reply->status = EOK;
+    strcpy(reply->path, description_);
+
+    return sizeof(*reply) + strlen(description_);
+}
 
 int PopFile::Write(pid_t pid, size_t nbytes, off_t offset)
 {
@@ -271,7 +296,7 @@ int PopDir::Disconnect(pop3& pop)
 usage: vf_pop3 [-hv] [-p vf] user[:passwd]@hostname
     -h   Print this message and exit.
     -v   Increase the verbosity level, default is 0.
-    -p   Path to place virtual file system at, default is ./'user@hostname'.
+    -p   Path to place virtual file system at, default is './user@hostname'.
     -m   Buffer read mail messages in memory, default is a temp file
          opened in /tmp with perms 0600 and immediately unlinked after
          being opened.
