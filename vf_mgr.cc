@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.4  1998/04/06 06:47:47  sroberts
 // implimented dup() and write()
 //
@@ -120,7 +124,7 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 
 int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 {
-	VFLog(3, "VFManager::Handle(%d, %#x)", pid, msg->type);
+	VFLog(3, "VFManager::Handle() pid %d type %#x)", pid, msg->type);
 
 	int size = -1;
 
@@ -132,6 +136,10 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 
 	case _IO_CHDIR:
 		size = root_->ChDir(msg->open.path, &msg->open, &msg->open_reply);
+		break;
+
+	case _FSYS_MKSPECIAL:
+		size = root_->MkDir(msg->mkdir.path, &msg->mkdir, &msg->mkdir_reply);
 		break;
 
 	case _IO_HANDLE:
@@ -155,19 +163,6 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 		}
 		break;
 
-	case _IO_READDIR: {
-		VFOcb* ocb = ocbMap_->Get(pid, msg->readdir.fd);
-
-		if(!ocb)
-		{
-			msg->status = EBADF;
-			size = sizeof(msg->status);
-			break;
-		}
-
-		size = ocb->ReadDir(&msg->readdir, &msg->readdir_reply);
-
-		} break;
 
 	case _IO_OPEN: {
 		VFOcb* ocb = root_->Open(msg->open.path, &msg->open, &msg->open_reply);
@@ -193,10 +188,6 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 
 		} break;
 
-	case _FSYS_MKSPECIAL:
-		size = root_->MkDir(msg->mkdir.path, &msg->mkdir, &msg->mkdir_reply);
-		break;
-
 	case _IO_DUP: {
 		VFOcb* ocb = ocbMap_->Get(msg->dup.src_pid, msg->dup.src_fd);
 		if(!ocb)
@@ -216,7 +207,14 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 
 		} break;
 
-	case _IO_WRITE: {
+	// operations supported directly by ocbs
+	case _IO_FSTAT:
+	case _IO_WRITE:
+	case _IO_READ:
+	case _IO_LSEEK:
+	case _IO_READDIR:
+	case _IO_REWINDDIR:
+	{
 		VFOcb* ocb = ocbMap_->Get(pid, msg->write.fd);
 
 		if(!ocb)
@@ -226,21 +224,36 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 			break;
 		}
 
-		size = ocb->Write(pid, &msg->write, &msg->write_reply);
+		switch(msg->type)
+		{
+		case _IO_FSTAT:
+			size = ocb->Stat(pid, &msg->fstat, &msg->fstat_reply);
+			break;
+		case _IO_WRITE:
+			size = ocb->Write(pid, &msg->write, &msg->write_reply);
+			break;
+		case _IO_READ:
+			size = ocb->Read(pid, &msg->read, &msg->read_reply);
+			break;
+		case _IO_LSEEK:
+			size = ocb->Seek(pid, &msg->seek, &msg->seek_reply);
+			break;
+		case _IO_READDIR:
+			size = ocb->ReadDir(pid, &msg->readdir, &msg->readdir_reply);
+			break;
+		case _IO_REWINDDIR:
+			size = ocb->RewindDir(pid, &msg->rewinddir, &msg->rewinddir_reply);
+			break;
+		}
+	}	break;
 
-		} break;
-
-//	case _IO_READ: break;
-//	case _IO_LSEEK: break;
 //	case _IO_RENAME: break;
 //	case _IO_GET_CONFIG: break;
-//	case _IO_FSTAT: break;
 //	case _IO_CHMOD: break;
 //	case _IO_CHOWN: break;
 //	case _IO_UTIME: break;
 //	case _IO_FLAGS: break;
 //	case _IO_LOCK: break;
-//	case _IO_REWINDDIR: break;
 //	case _IO_IOCTL: break;
 //	case _IO_SELECT: break;
 //	case _IO_QIOCTL: break;

@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.4  1998/04/06 06:47:47  sroberts
 // implimented dup() and write()
 //
@@ -34,11 +38,6 @@ union VFIoMsg
 	struct _io_open 				open;
 	struct _io_open_reply 			open_reply;
 
-	struct _io_fstat_reply			fstat_reply;
-
-	struct _io_readdir 				readdir;
-	struct _io_readdir_reply	 	readdir_reply;
-
 	struct _io_close 				close;
 	struct _io_close_reply 			close_reply;
 
@@ -51,24 +50,35 @@ union VFIoMsg
 	struct _io_write 				write;
 	struct _io_write_reply 			write_reply;
 
-	//struct _io_read 				read;
-	//struct _io_read_reply 		read;
-	//struct _io_lseek 				lseek;
-	//struct _io_lseek_reply 		lseek;
-	//struct _io_config 			
-	//struct _io_config_reply 			
-	//struct _io_fstat 			
+	struct _io_read 				read;
+	struct _io_read_reply 			read_reply;
+
+	struct _io_lseek 				seek;
+	struct _io_lseek_reply 			seek_reply;
+
+	struct _io_fstat				fstat;
+	struct _io_fstat_reply			fstat_reply;
+
+	struct _io_readdir 				readdir;
+	struct _io_readdir_reply	 	readdir_reply;
+
+	struct _io_rewinddir 			rewinddir;
+	struct _io_rewinddir_reply 		rewinddir_reply;
+
 	//struct _io_chmod 			
 	//struct _io_chmod_reply 			
 	//struct _io_chown 			
 	//struct _io_chown_reply 			
 	//struct _io_utime 			
 	//struct _io_utime_reply 			
+
+	// Don't intend to support these messages.
+
+	//struct _io_lock 			
+	//struct _io_config 			
+	//struct _io_config_reply 			
 	//struct _io_flags 			
 	//struct _io_flags_reply 			
-	//struct _io_lock 			
-	//struct _io_rewinddir 			
-	//struct _io_rewinddir_reply 			
 	//struct _io_ioctl 			
 	//struct _io_ioctl_reply 			
 	//struct _io_qioctl 			

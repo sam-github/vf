@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.3  1998/04/05 23:53:13  sroberts
 // added mkdir() support, so don't create my own directories any more
 //
@@ -87,20 +91,4 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-
-/*
-	pid_t pid = getpid();
-
-	msg->type = _IO_OPEN;
-	strcpy(msg->open.path, "");
-	vfmgr->Handle(pid, msg);
-
-	msg->type = _IO_OPEN;
-	strcpy(msg->open.path, "sub/sub/enoent");
-	vfmgr->Handle(pid, msg);
-
-	msg->type = _IO_OPEN;
-	strcpy(msg->open.path, "sub/sub");
-	vfmgr->Handle(pid, msg);
-*/
 

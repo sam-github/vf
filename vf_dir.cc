@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.6  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.5  1998/04/06 06:49:05  sroberts
 // implemented write(), implemented FileEntity factory, and removed unused
 // close() memthod
@@ -332,16 +336,6 @@ VFDirOcb::~VFDirOcb()
 	VFLog(3, "VFDirOcb::~VFDirOcb()");
 }
 
-int VFDirOcb::Stat()
-{
-	return 0;
-}
-
-int VFDirOcb::Read()
-{
-	return 0;
-}
-
 int VFDirOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
 {
 	pid = pid, req = req;
@@ -349,9 +343,31 @@ int VFDirOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
 	return sizeof(reply->status);
 }
 
-int VFDirOcb::Seek()
+int VFDirOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
+{
+	pid = pid, req = req, reply = reply;
+
+	return 0;
+}
+
+int VFDirOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
 {
 	return 0;
+}
+
+int VFDirOcb::Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply)
+{
+	VFLog(2, "VFDirOcb::Stat() pid %d fd %d", pid, req->fd);
+
+	struct stat* stat = dir_->Stat();
+	assert(stat);
+
+	// yeah, I know I should do the Replymx thing to avoid memcpys...
+	reply->status = EOK;
+	reply->zero = 0;
+	reply->stat = *stat;
+
+	return sizeof(*reply);
 }
 
 int VFDirOcb::Chmod()
@@ -364,13 +380,22 @@ int VFDirOcb::Chown()
 	return 0;
 }
 
-int VFDirOcb::ReadDir(_io_readdir* req, _io_readdir_reply* reply)
+int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 {
+	pid = pid;
+
 	int entries = dir_->map_.entries();
 
 	VFLog(2, "VFDirOcb::ReadDir() index %d entries %d", readIndex_, entries);
 
 	reply->status = EOK;
+
+	reply->zero[0] = 0; // should use a memset
+	reply->zero[1] = 0;
+	reply->zero[2] = 0;
+	reply->zero[3] = 0;
+	reply->zero[4] = 0;
+
 
 	if(readIndex_ == entries)
 	{
@@ -382,16 +407,21 @@ int VFDirOcb::ReadDir(_io_readdir* req, _io_readdir_reply* reply)
 	assert(pair);
 
 	reply->ndirs  = 1;
-	memcpy(&reply->data[0], pair->entity->Stat(), sizeof(struct stat));
-	strcpy(&reply->data[sizeof(struct stat)], pair->name);
+	struct dirent* dirent = (struct dirent*) &reply->data[0];
+
+	strcpy(dirent->d_name, pair->name); // should probably use strncpy()
+	dirent->d_stat = *pair->entity->Stat();
+	dirent->d_stat.st_status |= _FILE_USED;
 
 	VFLog(2, "VFDirOcb::ReadDir() name %s", &reply->data[sizeof(struct stat)]);
 
-	return sizeof(*reply) + sizeof(struct dirent);
+	return sizeof(*reply) - sizeof(reply->data) + sizeof(struct dirent);
 }
 
-int VFDirOcb::RewindDir(_io_rewinddir* req, _io_rewinddir_reply* reply)
+int VFDirOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
 {
+	pid = pid;
+
 	VFLog(2, "VFDirOcb::RewindDir()");
 
 	readIndex_ = 0;

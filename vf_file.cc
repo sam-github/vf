@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.2  1998/04/06 06:50:19  sroberts
 // implemented creat(), and write()
 //
@@ -26,8 +30,8 @@
 
 VFFileEntity::VFFileEntity(mode_t mode) :
 	data_	(0),
-	len_	(0),
-	size_	(0)
+	dataLen_	(0),
+	fileSize_	(0)
 {
 	InitStat(mode);
 }
@@ -126,37 +130,38 @@ struct stat* VFFileEntity::Stat()
 int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
 {
 	VFLog(2, "VFFileEntity::Write() size %ld, offset %ld len %ld size %ld",
-		nbytes, offset, len_, size_);
+		nbytes, offset, dataLen_, fileSize_);
 
 	// grow the buffer if possible/necessary
-	if(offset + nbytes > len_)
+	if(offset + nbytes > dataLen_)
 	{
+		// for fast writes I should always allocate 2*dataLen_, and
+		// unallocate when fileSize_ is < dataLen_/4, for now I use the more
+		// memory conservative approach
 		char* b = (char*) realloc(data_, offset + nbytes);
-		if(b) { data_ = b; len_ = offset + nbytes; }
+		if(b) { data_ = b; dataLen_ = offset + nbytes; }
 	}
 	// see if we can read any data into available space
-	if(offset >= len_)
+	if(offset >= dataLen_)
 	{
 		errno = ENOSPC;
 		return -1;
 	}
-	if(offset >= size_)
+	if(offset >= fileSize_)
 	{
 		// offset past end of file, so zero data up to write point
-		memset(&data_[size_], 0, offset - size_);
+		memset(&data_[fileSize_], 0, offset - fileSize_);
 	}
-	if(len_ - offset < nbytes)
+	if(dataLen_ - offset < nbytes)
 	{
 		// we can only partially fulfill the write request
-		nbytes = len_ - offset;
+		nbytes = dataLen_ - offset;
 	}
 
-	// ready to read nbytes into the data buffer
-	_mxfer_entry mx[1];
-	_setmx(&mx[0], &data_[offset], nbytes);
-
+	// ready to read nbytes into the data buffer from the offset of the
+	// "data" part of the write message
 	size_t dataOffset = offsetof(struct _io_write, data);
-	unsigned ret = Readmsgmx(pid, dataOffset, 1, mx);
+	unsigned ret = Readmsg(pid, dataOffset, &data_[offset], nbytes);
 
 	if(ret != -1)
 	{
@@ -164,11 +169,38 @@ int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
 
 		// update sizes if end of write is past current size
 		off_t end = offset + ret;
-		if(end > size_) { size_ = stat_.st_size = end; }
+		if(end > fileSize_) { fileSize_ = stat_.st_size = end; }
 	}
 
 	return ret;
 }
+
+int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "VFFileEntity::Read() size %ld, offset %ld len %ld size %ld",
+		nbytes, offset, dataLen_, fileSize_);
+
+	// adjust nbytes if the read would be past the end of file
+	if(offset + nbytes > fileSize_)
+	{
+		nbytes = fileSize_ - offset;
+		if(nbytes < 0) { nbytes = 0; }
+	}
+
+	// ready to write nbytes from the data buffer to the offset of the
+	// "data" part of the read reply message
+	size_t dataOffset = offsetof(struct _io_read_reply, data);
+	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
+
+	if(ret != -1)
+	{
+		VFLog(2, "VFFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
+	}
+
+	return ret;
+}
+
+
 
 void VFFileEntity::InitStat(mode_t mode)
 {
@@ -192,22 +224,13 @@ void VFFileEntity::InitStat(mode_t mode)
 //
 
 VFFileOcb::VFFileOcb(VFFileEntity* file) :
-	file_	(file)
+	file_	(file),
+	offset_	(0)
 {
 }
 
 VFFileOcb::~VFFileOcb()
 {
-}
-
-int VFFileOcb::Stat()
-{
-	return 0;
-}
-
-int VFFileOcb::Read()
-{
-	return 0;
 }
 
 int VFFileOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
@@ -221,14 +244,86 @@ int VFFileOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
 		reply->status = errno;
 		return sizeof(reply->status);
 	}
-
+	// fill in successful reply
+	reply->status = EOK;
 	reply->zero = 0;
+
+	// update this ocb's file position
+	offset_ += reply->nbytes;
+
 	return sizeof(*reply);
 }
 
-int VFFileOcb::Seek()
+int VFFileOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
 {
-	return 0;
+	// permissions checks...
+
+	reply->nbytes = file_->Read(pid, req->nbytes, offset_);
+
+	if(reply->nbytes == -1)
+	{
+		reply->status = errno;
+		return sizeof(reply->status);
+	}
+	// fill in successful reply
+	reply->status = EOK;
+	reply->zero = 0;
+
+	// update this ocb's file position
+	offset_ += reply->nbytes;
+
+	// the file_->Read() already did the data part of the reply,
+	// so be very careful not to overwrite that data with our reply
+	return sizeof(*reply) - sizeof(reply->data);
+}
+
+int VFFileOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
+{
+	off_t to = offset_;
+	if(req->whence == SEEK_SET)
+	{
+		to = req->offset;
+	}
+	else if(req->whence == SEEK_CUR)
+	{
+		to += req->offset;
+	}
+	else if(req->whence == SEEK_END)
+	{
+		to = file_->Stat()->st_size - req->offset;
+	}
+	else
+	{
+		reply->status = EINVAL;
+		return sizeof(reply->status);
+	}
+
+	if(to < 0)
+	{
+		reply->status = EINVAL;
+		return sizeof(reply->status);
+	}
+
+	reply->offset = offset_ = to;
+	reply->zero = 0;
+	reply->status = EOK;
+
+	return sizeof(*reply);
+}
+
+int VFFileOcb::Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply)
+{
+	VFLog(2, "VFFileEntity::Stat() pid %d fd %d", pid, req->fd);
+
+	struct stat* stat = file_->Stat();
+	assert(stat);
+
+	// yeah, I know I should do the Replymx thing to avoid memcpys...
+	reply->status = EOK;
+	reply->zero = 0;
+	reply->stat = *stat;
+
+	return sizeof(*reply);
 }
 
 int VFFileOcb::Chmod()
@@ -241,12 +336,12 @@ int VFFileOcb::Chown()
 	return 0;
 }
 
-int VFFileOcb::ReadDir(_io_readdir* req, _io_readdir_reply* reply)
+int VFFileOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 {
 	return 0;
 }
 
-int VFFileOcb::RewindDir(_io_rewinddir* req, _io_rewinddir_reply* reply)
+int VFFileOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
 {
 	return 0;
 }

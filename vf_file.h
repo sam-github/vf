@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/04/28 01:53:13  sroberts
+// implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+// a directory tree into the virtual filesystem though, checking in anyhow
+//
 // Revision 1.2  1998/04/06 06:50:19  sroberts
 // implemented creat(), and write()
 //
@@ -33,11 +37,12 @@ public:
 
 	// used by the Ocb
 	int Write(pid_t pid, size_t nbytes, off_t offset);
+	int Read(pid_t pid, size_t nbytes, off_t offset);
 
 private:
 	char* data_; // pointer to buffer
-	off_t len_;  // length of data buffer
-	off_t size_; // size of data (may be less than that of the buffer)
+	off_t dataLen_;  // length of data buffer
+	off_t fileSize_; // size of file data (may be less than dataLen_)
 
 	struct stat stat_;
 
@@ -50,15 +55,15 @@ public:
 	VFFileOcb(VFFileEntity* file);
 	~VFFileOcb();
 
-	int Stat();
-	int Read();
 	int Write(pid_t pid, _io_write* req, _io_write_reply* reply);
-	int Seek();
+	int Read(pid_t pid, _io_read* req, _io_read_reply* reply);
+	int Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply);
+	int Stat(pid_t pid, _io_fstat* req, _io_fstat_reply* reply);
 	int Chmod();
 	int Chown();
 
-	int ReadDir(_io_readdir* req, _io_readdir_reply* reply);
-	int RewindDir(_io_rewinddir* req, _io_rewinddir_reply* reply);
+	int ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply);
+	int RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply);
 
 private:
 	VFFileEntity* file_;

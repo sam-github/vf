@@ -44,11 +44,14 @@ export: all
 run: stop vf_test
 	vf_test -vv &
 
+log: stop vf_test
+	vf_test -vv > vf_test.log &
+
 debug: stop vf_test
 	wd vf_test -vvvv &
 
 stop:
-	-slay -f vf_test
+	-slay -f vf_test || true
 
 # rule forcing run of usemsg after linking
 %: %.o
@@ -73,6 +76,10 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.7  1998/04/28 01:53:13  sroberts
+# implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
+# a directory tree into the virtual filesystem though, checking in anyhow
+#
 # Revision 1.6  1998/04/06 06:50:55  sroberts
 # added .map.sort to files to be emptied
 #
