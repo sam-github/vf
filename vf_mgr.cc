@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.19  1999/10/17 16:20:56  sam
+// Added support for umount().
+//
 // Revision 1.18  1999/10/04 03:31:38  sam
 // added mechanism to fork and wait for child to the manager
 //
@@ -306,10 +309,15 @@ int VFManager::Service(pid_t pid, VFMsg* msg)
 					msg->mkspec.path + PATH_MAX + 1);
 		break;
 
+	case _FSYS_UMOUNT:
 	case _FSYS_REMOVE: {
 		// not supported by entites yet, only accept if directed to top-level
 		if(msg->remove.path[0] != '\0') {
-			status = ENOTSUP;
+			switch(msg->type)
+			{
+				case _FSYS_UMOUNT: status = EINVAL; break;
+				case _FSYS_REMOVE: status = ENOTSUP; break;
+			}
 			break;
 		}
 

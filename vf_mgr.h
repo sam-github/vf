@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.15  1999/10/17 16:20:56  sam
+// Added support for umount().
+//
 // Revision 1.14  1999/10/04 03:31:38  sam
 // added mechanism to fork and wait for child to the manager
 //
@@ -89,6 +92,9 @@ union VFMsg
 
 	struct _fsys_readlink			rdlink;
 	struct _fsys_readlink_reply		rdlink_reply;
+
+	struct _fsys_umount				umount;
+	struct _fsys_umount_reply		umount_reply;
 
 	struct _io_dup 					dup;
 	struct _io_dup_reply 			dup_reply;
