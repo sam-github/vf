@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.17  1999/09/27 02:51:02  sam
+// made servers priority float, and tweaked verbosity of a log message
+//
 // Revision 1.16  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -109,13 +112,13 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 
 	VFLevel(mount, verbosity);
 
-
 	// cause fdmap to be initialized
 	VFFdMap::Fd();
 
-	// declare ourselves as a server, and get messages in priority order
+	// declare ourselves as a server, and get messages in priority order,
+	// and float our priority
 
-	long pflags = _PPF_PRIORITY_REC | _PPF_SERVER;
+	long pflags = _PPF_PRIORITY_REC | _PPF_SERVER | _PPF_PRIORITY_FLOAT;
 
 	if(qnx_pflags(pflags, pflags, 0, 0) == -1) { return 0; }
 
@@ -140,7 +143,7 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 
 int VFManager::Service(pid_t pid, VFMsg* msg)
 {
-	VFLog(3, "VFManager::Service() pid %d type %s (%#x)",
+	VFLog(4, "VFManager::Service() pid %d type %s (%#x)",
 		pid, MessageName(msg->type), msg->type);
 
 	int status = -1;
