@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/09/23 01:39:22  sam
+// first cut at templatization running ok
+//
 // Revision 1.1  1999/09/19 22:24:47  sam
 // Initial revision
 //
@@ -65,13 +68,13 @@ inline int ioread(istream& is, void* buf, int nbytes)
 #define WTMSG_DATA		0x0002
 #define WTMSG_COMPLETE	0x0003
 
-// template <class Request>
+template <class Request>
 struct wtmsg_request {
-	void Fill(int rid_, int msg_) {
+	void Fill(int rid_, const Request& request_) {
 		type	= VF_WORKTEAM_MSG;
 		subtype	= WTMSG_REQUEST;
 		rid		= rid_;
-		msg		= msg_;
+		request	= request_;
 	}
 
 	msg_t	type;
@@ -79,7 +82,7 @@ struct wtmsg_request {
 
 	int		rid;
 
-	int		msg; // Request
+	Request	request;
 };
 
 struct wtmsg_data {
@@ -115,35 +118,30 @@ struct wtmsg_complete {
 	int cause; // >= 0, exited; < 0, signaled
 };
 
-// until templatized...
-class VFPop;
-class VFPopFile;
-
-// template <class Request, class Info>
+template <class Request, class Info, class Task, class Complete>
 class VFWorkTeam
 {
 public:
-	static VFWorkTeam* Create(VFPop* pop, int maxthreads);
+	static VFWorkTeam* Create(Complete* mgr, int maxthreads);
 
-	// int Push(Request r, Info i, iostream* data);
-	int Push(int msg, VFPopFile* file, iostream* data = 0);
+	int Push(const Request& request, const Info& info, iostream* data);
 
 	int Service(pid_t pid);
 
 private:
-	VFWorkTeam(VFPop* pop, int maxthreads);
+	VFWorkTeam(Complete* mgr, int maxthreads);
 
 	VFWorkTeam*	Start();
 
 	void	DoPending();
 
 	struct WorkRequest : public VFFifo<WorkRequest>::Link {
-		WorkRequest(int msgid, int rid, VFPopFile* file, iostream* data) :
-			msgid(msgid), rid(rid), file(file), data(data) {}
-		int			msgid;	// Request
+		WorkRequest(const Request& r, int rid, const Info& info, iostream* data) :
+			request(r), rid(rid), info(info), data(data) {}
+		Request		request;
 		int			rid;
 		iostream*	data;
-		VFPopFile*	file;	// Info
+		Info		info;
 	};
 
 	class RequestQueue
@@ -153,7 +151,7 @@ private:
 		int	Pending() const { return fifo_.Size(); }
 		int	Active() const { return requested_ - Pending(); }
 
-		int Push(int msgid, VFPopFile* file, iostream* data) {
+		int Push(const Request& request, const Info& info, iostream* data) {
 			// find first unused request id
 			WorkRequest* wr = 0;
 			int rid = -1;
@@ -174,7 +172,7 @@ private:
 				return ENOMEM;
 			}
 
-			wr = new WorkRequest(msgid, rid, file, data);
+			wr = new WorkRequest(request, rid, info, data);
 
 			if(!wr) { return errno; }
 
@@ -214,32 +212,37 @@ private:
 
 	RequestQueue	rq_;
 
-	VFPop*	pop_;
+	Complete* complete_;
 	pid_t	leader_;
 	int		maxthreads_;
+};
+
+//
+//
+//
+
+class VFTaskDataHandle // Used by the client's Task
+{
+public:
+	virtual int Data(const void* data, size_t length) = 0;
 };
 
 //
 // VFTeamLead: manages the work team, running as the lead thread.
 //
 
-// template <class Task, class Request>
+template <class Request, class Task>
 class VFTeamLead
 {
 public:
 	static int Start();
-
-	class DataHandle
-	{
-		virtual void Data(const void* data, size_t length) = 0;
-	};
 
 private:
 	VFTeamLead();
 
 	int		Run();
 	void	HandleDeath();
-	int		HandleRequest(pid_t pid, const wtmsg_request& req);
+	int		HandleRequest(pid_t pid, const wtmsg_request<Request>& req);
 
 	class Active
 	{
@@ -247,29 +250,25 @@ private:
 		Active(pid_t client) : client_(client), count_(0) {}
 
 		int Count() { return count_; }
-		int	Start(int rid, int msgid);
+		int	Start(int rid, const Request& request);
 		int Complete(const VFExitStatus& status);
 
 	private:
 		// template <class Task>
-		class Worker
+		class Worker : public VFTaskDataHandle
 		{
 		public:
 			Worker(int rid, pid_t client) :
 				rid_(rid), pid_(-1), client_(client) {}
 
 			// used by Active
-			//int		Start(Request r);
-			int		Start(int msgid);
+			int		Start(const Request& request);
 			pid_t	Pid() const { return pid_; }
 			pid_t	Rid() const { return rid_; }
 			void	Complete(const VFExitStatus& status);
 
 			// used by Task
-			int		Data(const void* data, int length);
-
-			// until we have a Task
-			int DoTask(Worker* dh, int msgid);
+			int	Data(const void* data, size_t length);
 
 		private:
 			void SendComplete(int cause);
@@ -278,7 +277,7 @@ private:
 			pid_t	pid_;
 			pid_t	client_;
 
-			//Task	task_;
+			Task	task_;
 		};
 
 		pid_t	client_;

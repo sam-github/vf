@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.7  1999/09/23 01:39:22  sam
+// first cut at templatization running ok
+//
 // Revision 1.6  1999/09/19 22:24:47  sam
 // implemented threading with a work team
 //
@@ -52,6 +55,7 @@
 #include <vf_file.h>
 #include <vf_log.h>
 #include <vf_fifo.h>
+
 #include "vf_wt.h"
 
 #include "url.h"
@@ -98,6 +102,21 @@ private:
 	VFFifo<ReadRequest>	readq_;
 };
 
+struct PopRequest
+{
+	int     msgid;
+};
+
+struct PopInfo
+{
+	VFPopFile*  file;
+};
+
+struct PopTask
+{
+	int Do(const PopRequest& request, VFTaskDataHandle* dh);
+};
+
 class VFPop : public VFManager
 {
 public:
@@ -109,7 +128,7 @@ public:
 
 	int Retr(int msg, VFPopFile* file);
 
-	void Complete(int status, VFPopFile* file, iostream* data);
+	void Complete(int status, const PopInfo& info, iostream* data);
 
 private:
 	VFDirEntity root_;
@@ -120,7 +139,7 @@ private:
 	int		inmem_;
 	int		sync_;
 
-	VFWorkTeam* team_;
+	VFWorkTeam<PopRequest, PopInfo, PopTask, VFPop> * team_;
 
 #if 0
 	int SyncRetr	(int msg, istream** str);
@@ -135,6 +154,7 @@ private:
 
 	static void SigHandler(int signo);
 };
+
 
 #endif
 

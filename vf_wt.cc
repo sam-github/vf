@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/09/23 01:39:22  sam
+// first cut at templatization running ok
+//
 // Revision 1.1  1999/09/19 22:24:47  sam
 // Initial revision
 //
@@ -37,7 +40,9 @@
 
 #include "vf_pop.h"
 
-VFWorkTeam* VFWorkTeam::Create(VFPop* pop, int maxthreads)
+template <class Request, class Info, class Task, class Complete>
+VFWorkTeam<Request,Info,Task,Complete>* VFWorkTeam<Request,Info,Task,Complete>::
+Create(VFPop* pop, int maxthreads)
 {
 	VFWorkTeam* wt = new VFWorkTeam(pop, maxthreads);
 
@@ -46,21 +51,24 @@ VFWorkTeam* VFWorkTeam::Create(VFPop* pop, int maxthreads)
 	return wt->Start();
 }
 
-// int Push(Request r, Info i, iostream* data = 0);
-int VFWorkTeam::Push(int msgid, VFPopFile* file, iostream* data)
+template <class Request, class Info, class Task, class Complete>
+int VFWorkTeam<Request,Info,Task,Complete>::
+Push(const Request& request, const Info& info, iostream* data)
 {
-	if(!file || !data) {
+	if(!data) {
 		return EINVAL;
 	}
 
-	int e = rq_.Push(msgid, file, data);
+	int e = rq_.Push(request, info, data);
 
 	DoPending();
 
 	return e;
 }
 
-void VFWorkTeam::DoPending()
+template <class Request, class Info, class Task, class Complete>
+void VFWorkTeam<Request,Info,Task,Complete>::
+DoPending()
 {
 	VFLog(3, "VFTeamLead::DoPending() active %d max %d pending %d",
 		rq_.Active(), maxthreads_, rq_.Pending());
@@ -71,7 +79,7 @@ void VFWorkTeam::DoPending()
 
 	if(!wr) { return; }
 
-	wtmsg_request msg; msg.Fill(wr->rid, wr->msgid);
+	wtmsg_request<Request> msg; msg.Fill(wr->rid, wr->request);
 	msg_t status;
 
 	if(Send(leader_, &msg, &status, sizeof(msg), sizeof(status)) == -1) {
@@ -80,12 +88,53 @@ void VFWorkTeam::DoPending()
 	if(status != EOK) {
 		assert(rq_.Peek(wr->rid) == wr);
 		rq_.Pop(wr->rid);
-		pop_->Complete(status, wr->file, wr->data);
+		complete_->Complete(status, wr->info, wr->data);
 		delete wr;
 	}
 }
 
-int VFWorkTeam::Service(pid_t pid)
+template <class Request, class Info, class Task, class Complete>
+int VFWorkTeam<Request,Info,Task,Complete>::RequestQueue::
+Push(const Request& request, const Info& info, iostream* data)
+{
+	// find first unused request id
+	WorkRequest* wr = 0;
+	int rid = -1;
+
+	for(int i = 0; rid == -1; i++)
+	{
+		if(requests_[i] == 0) { rid = i; break; } // done
+
+		// when a vector resize fails due to lack of memory, the last
+		// item in the vector is returned, detect this
+		if(wr == requests_[i]) { break; }
+
+		wr = requests_[i];
+	}
+
+	if(rid == -1) {
+		VFLog(1, "RequestQueue::Push() vector resize failed!");
+		return ENOMEM;
+	}
+
+	wr = new WorkRequest(request, rid, info, data);
+
+	if(!wr) { return errno; }
+
+	requests_[rid] = wr;
+
+	assert(requests_[rid] == wr);
+
+	fifo_.Push(wr); // can't fail, even from no memory
+
+	requested_++;
+
+	return EOK;
+}
+
+template <class Request, class Info, class Task, class Complete>
+int VFWorkTeam<Request,Info,Task,Complete>::
+Service(pid_t pid)
 {
 	union {
 		struct {
@@ -142,7 +191,7 @@ int VFWorkTeam::Service(pid_t pid)
 		WorkRequest* wr = rq_.Pop(msg.complete.rid);
 		if(!wr) { return EINVAL; }
 
-		pop_->Complete(msg.complete.cause, wr->file, wr->data);
+		complete_->Complete(msg.complete.cause, wr->info, wr->data);
 
 		delete wr;
 
@@ -156,14 +205,18 @@ int VFWorkTeam::Service(pid_t pid)
 	}
 }
 
-VFWorkTeam::VFWorkTeam(VFPop* pop, int maxthreads) :
-	pop_		(pop),
+template <class Request, class Info, class Task, class Complete>
+VFWorkTeam<Request,Info,Task,Complete>::
+VFWorkTeam(Complete* complete, int maxthreads) :
+	complete_	(complete),
 	leader_		(-1),
 	maxthreads_	(maxthreads)
 {
 }
 
-VFWorkTeam* VFWorkTeam::Start()
+template <class Request, class Info, class Task, class Complete>
+VFWorkTeam<Request,Info,Task,Complete>* VFWorkTeam<Request,Info,Task,Complete>::
+Start()
 {
 	switch((leader_ = fork()))
 	{
@@ -172,7 +225,7 @@ VFWorkTeam* VFWorkTeam::Start()
 		return 0;
 
 	case 0:
-		exit(VFTeamLead::Start());
+		exit(VFTeamLead<Request,Task>::Start());
 		break;
 
 	default:
@@ -185,9 +238,12 @@ VFWorkTeam* VFWorkTeam::Start()
 // VFTeamLead
 //
 
-pid_t VFTeamLead::sigproxy_ = -1;
+template <class Request, class Task>
+pid_t VFTeamLead<Request,Task>::sigproxy_ = -1;
 
-int VFTeamLead::Start()
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::
+Start()
 {
 	static VFTeamLead tl;
 
@@ -205,15 +261,19 @@ int VFTeamLead::Start()
 	return tl.Run();
 }
 
-VFTeamLead::VFTeamLead() :
+template <class Request, class Task>
+VFTeamLead<Request,Task>::
+VFTeamLead() :
 	active_		(getppid()),
 	client_		(getppid())
 {
 }
 
-int VFTeamLead::Run()
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::
+Run()
 {
-	wtmsg_request	msg;
+	wtmsg_request<Request>	msg;
 	pid_t	pid;
 
 	while(1)
@@ -254,7 +314,9 @@ int VFTeamLead::Run()
 	}
 }
 
-void VFTeamLead::HandleDeath()
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::
+HandleDeath()
 {
 	VFExitStatus status;
 
@@ -266,19 +328,21 @@ void VFTeamLead::HandleDeath()
 	active_.Complete(status);
 }
 
-int VFTeamLead::HandleRequest(pid_t pid, const wtmsg_request& req)
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::
+HandleRequest(pid_t pid, const wtmsg_request<Request>& req)
 {
-	VFLog(3, "VFTeamLead::HandleRequest() pid %d msgid %d rid %d",
-		pid, req.msg, req.rid);
+	VFLog(3, "VFTeamLead::HandleRequest() pid %d rid %d", pid, req.rid);
 
 	if(pid != client_) {
 		VFLog(1, "VFTeamLead::HandleRequest() request from %d not allowed", pid);
 		return EACCES;	// only our client can make requests!
 	}
-	return active_.Start(req.rid, req.msg);
+	return active_.Start(req.rid, req.request);
 }
 
-void VFTeamLead::SigHandler(int signo)
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::SigHandler(int signo)
 {
 	VFLog(3, "VFTeamLead::SigHandler() signo %d", signo);
 
@@ -291,7 +355,9 @@ void VFTeamLead::SigHandler(int signo)
 // VFTeamLead::Active
 //
 
-int VFTeamLead::Active::Start(int rid, int msgid)
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::Active::
+Start(int rid, const Request& request)
 {
     assert(workers_[rid] == 0);
 
@@ -299,7 +365,7 @@ int VFTeamLead::Active::Start(int rid, int msgid)
 
     if(!w) { return ENOMEM; }
 
-    int e = w->Start(msgid);
+    int e = w->Start(request);
 
     if(e != EOK) { delete w; return e; }
 
@@ -312,7 +378,9 @@ int VFTeamLead::Active::Start(int rid, int msgid)
     return EOK;
 }
 
-int VFTeamLead::Active::Complete(const VFExitStatus& status)
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::Active::
+Complete(const VFExitStatus& status)
 {
 	VFLog(3, "VFTeamLead::Active::Complete() pid %d %s with [%d] %s",
 		status.Pid(), status.Reason(), status.Number(), status.Name());
@@ -351,7 +419,9 @@ int VFTeamLead::Active::Complete(const VFExitStatus& status)
 // VFTeamLead::Worker
 //
 
-int VFTeamLead::Active::Worker::Start(int msgid)
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::Active::Worker::
+Start(const Request& request)
 {
 	pid_ = fork();
 	switch(pid_)
@@ -361,9 +431,9 @@ int VFTeamLead::Active::Worker::Start(int msgid)
 	case 0: {
 		VFLog(3, "VFTeamLead::Active::Worker::Start() starting task");
 
-		int e = DoTask(this, msgid);
+		int e = task_.Do(request, this);
 
-		VFLog(3, "VFTeamLead::Active::Worker::DoTask() returned [%d] %s", VFERR(e));
+		VFLog(3, "VFTeamLead::Active::Worker::DoTask() return [%d] %s", VFERR(e));
 
 		SendComplete(e);
 		}
@@ -380,13 +450,16 @@ int VFTeamLead::Active::Worker::Start(int msgid)
 // I/O manager to block forever, better to fail the whole team than to have
 // that occur.
 
-void VFTeamLead::Active::Worker::Complete(const VFExitStatus& status)
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::Active::Worker::
+Complete(const VFExitStatus& status)
 {
 	if(!status.Ok()) {
 		// complete transaction for our errant child: we can't send to client,
 		// that would cause deadlock, instead fork() and send
 
-		VFLog(1, "VFTeamLead::Active::Worker::Complete() pid %d rid %d failed: %s with [%d] %s",
+		VFLog(1, "VFTeamLead::Active::Worker::Complete() "
+			"pid %d rid %d failed: %s with [%d] %s",
 			Pid(), Rid(), status.Reason(), status.Number(), status.Name());
 
 		pid_t child = fork();
@@ -419,7 +492,9 @@ void VFTeamLead::Active::Worker::Complete(const VFExitStatus& status)
 	return;
 }
 
-int VFTeamLead::Active::Worker::Data(const void* data, int length)
+template <class Request, class Task>
+int VFTeamLead<Request,Task>::Active::Worker::
+Data(const void* data, size_t length)
 {
 	msg_t		status;
 	wtmsg_data	msg; msg.Fill(rid_, length);
@@ -446,70 +521,9 @@ int VFTeamLead::Active::Worker::Data(const void* data, int length)
 	return EOK;
 }
 
-int VFTeamLead::Active::Worker::DoTask(Worker* dh, int msgid)
-{
-	pop3	pop;
-	char*	host_ = "localhost";
-	char*	user_ = "guest";
-	char*	pass_ = "guest";
-
-	// if(msgid == 2) raise(SIGUSR1); // simulate failure!
-
-	VFLog(3, "VFTeamLead::Active::Worker::Start() connecting...");
-
-    int fail = pop->connect(host_);
-
-    if(fail) {
-        VFLog(0, "connect to %s failed: [%d] %s\n",
-            (const char*)host_, fail, strerror(fail));
-        return ECONNREFUSED;
-    }
-
-     if(!pop->checkconnect()) {
-        VFLog(0, "connect to %s failed: %s",
-            (const char*)host_, pop->response() + strlen("-ERR "));
-        return ECONNREFUSED;
-    }
-
-    if(!pop->user(user_)) {
-        VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
-        return EACCES;
-    }
-
-    if(!pop->pass(pass_)) {
-        VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
-        return EACCES;
-    }
-
-	VFLog(3, "VFTeamLead::Active::Worker::Start() retrieving...");
-
-    istream& is = pop->retr(msgid);
-
-    if(!is.good()) { return EIO; }
-
-    static char buf[16 * 1024];
-
-	while(!is.eof())
-	{
-		int n = ioread(is, buf, sizeof(buf));
-
-		if(n == -1) {
-			return errno;
-		}
-
-		int e = dh->Data(buf, n);
-
-		if(e != EOK) {
-			return e;
-		}
-	}
-
-    pop->quit();
-
-    return EOK;
-}
-
-void VFTeamLead::Active::Worker::SendComplete(int cause)
+template <class Request, class Task>
+void VFTeamLead<Request,Task>::Active::Worker::
+SendComplete(int cause)
 {
 	wtmsg_complete msg; msg.Fill(Rid(), cause);
 

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/09/23 01:39:22  sam
+// first cut at templatization running ok
+//
 // Revision 1.9  1999/09/19 22:24:47  sam
 // implemented threading with a work team
 //
@@ -62,13 +65,17 @@
 #include <sys/proxy.h>
 #include <sys/wait.h>
 
-#include "vf_pop.h"
 #include <vf_dir.h>
 #include <vf_file.h>
 #include <vf_log.h>
 #include <vf_os.h>
 
+#include "vf_pop.h"
+
 #include "url.h"
+
+// include definitions of the workteam functions
+#include "vf_wt.cc"
 
 const char* ItoA(int i)
 {
@@ -80,6 +87,77 @@ PopFail(const char* cmd, pop3& pop)
 {
 	VFLog(0, "%s failed: %s", cmd, pop->response() + strlen("-ERR "));
 	exit(1);
+}
+
+//
+// PopTask
+//
+
+int PopTask::Do(const PopRequest& request, VFTaskDataHandle* dh)
+{
+	pop3	pop;
+
+	extern char *hostOpt, *userOpt, *passOpt;
+
+	char*	host = hostOpt;
+	char*	user = userOpt;
+	char*	pass = passOpt;
+
+	if(request.msgid == 2) raise(SIGUSR1); // simulate failure!
+
+	//VFLog(3, "VFTeamLead::Active::Worker::Start() connecting...");
+	VFLog(3, "VFPopTask::Do() connecting...");
+
+    int fail = pop->connect(host);
+
+    if(fail) {
+        VFLog(0, "connect to %s failed: [%d] %s\n",
+            (const char*)host, fail, strerror(fail));
+        return ECONNREFUSED;
+    }
+
+     if(!pop->checkconnect()) {
+        VFLog(0, "connect to %s failed: %s",
+            (const char*)host, pop->response() + strlen("-ERR "));
+        return ECONNREFUSED;
+    }
+
+    if(!pop->user(user)) {
+        VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
+        return EACCES;
+    }
+
+    if(!pop->pass(pass)) {
+        VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
+        return EACCES;
+    }
+
+	VFLog(3, "VFTeamLead::Active::Worker::Start() retrieving...");
+
+    istream& is = pop->retr(request.msgid);
+
+    if(!is.good()) { return EIO; }
+
+    static char buf[16 * 1024];
+
+	while(!is.eof())
+	{
+		int n = ioread(is, buf, sizeof(buf));
+
+		if(n == -1) {
+			return errno;
+		}
+
+		int e = dh->Data(buf, n);
+
+		if(e != EOK) {
+			return e;
+		}
+	}
+
+    pop->quit();
+
+    return EOK;
 }
 
 //
@@ -318,7 +396,7 @@ void VFPop::Run(const char* mount, int verbosity)
 
 	signal(SIGCHLD, SigHandler);
 
-	team_ = VFWorkTeam::Create(this, 1);
+	team_ = VFWorkTeam<PopRequest, PopInfo, PopTask, VFPop>::Create(this, 1);
 
 	if(!team_) {
 		VFLog(0, "work team create failed: [%d] %s\n", VFERR(errno));
@@ -355,7 +433,11 @@ int VFPop::Retr(int msg, VFPopFile* file)
 
 	if(!mail) { return errno; }
 
-	int e = team_->Push(msg, file, mail);
+	PopRequest request; request.msgid = msg;
+
+	PopInfo	info; info.file = file;
+
+	int e = team_->Push(request, info, mail);
 
 	if(e == EOK) {
 		return -1; // request blocked, no status yet
@@ -374,18 +456,18 @@ int VFPop::Retr(int msg, VFPopFile* file)
 #endif
 }
 
-void VFPop::Complete(int status, VFPopFile* file, iostream* data)
+void VFPop::Complete(int status, const PopInfo& info, iostream* data)
 {
 	VFLog(4, "VFPop::Complete() status %d", status);
 
-	assert(file);
+	assert(info.file);
 	assert(data);
 
 	if(status != EOK) { delete data; data = 0; }
 
 	if(status < 0) { status = EINTR; }
 
-	file->Return(status, data);
+	info.file->Return(status, data);
 }
 
 #if 0
