@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1998/04/06 06:49:05  sroberts
+// implemented write(), implemented FileEntity factory, and removed unused
+// close() memthod
+//
 // Revision 1.4  1998/04/05 23:54:41  sroberts
 // added support for mkdir(), and a factory class for dir and file entities
 //
@@ -47,9 +51,9 @@ VFEntity* VFDirFactory::NewDir(_fsys_mkspecial* req)
 
 VFEntity* VFDirFactory::NewFile(_io_open* req)
 {
-	VFEntity* entity = 0; //new VFFileEntity(req ? req->mode : mode_);
+	VFEntity* entity = new VFFileEntity(req ? req->mode : mode_);
 	if(!entity) { errno = ENOSYS; }
-	return 0;
+	return entity;
 }
 
 //
@@ -89,16 +93,18 @@ VFOcb* VFDirEntity::Open(
 	String tail;
 	SplitPath(path, lead, tail);
 
-	VFEntity* entity = map_[lead];
+	VFEntity* entity = 0;
+	if(map_.contains(lead)) { entity = map_[lead]; }
 
 	// if there is not an entity, perhaps create one
-	if(!entity && factory_ && (req->oflag & O_CREAT))
+	if(!entity && tail == "" && factory_ && (req->oflag & O_CREAT))
 	{
 		entity = factory_->NewFile(req);
-		if(!entity)
+		if(!entity || !Insert(lead, entity))
 		{
 			VFLog(2, "VFDirEntity::Open() create failed: %s", strerror(errno));
 			reply->status = errno;
+			delete entity;
 			return 0;
 		}
 	}
@@ -179,7 +185,6 @@ int VFDirEntity::ChDir(
 
 	return entity->ChDir(tail, open, reply);
 }
-
 
 int VFDirEntity::Unlink()
 {
@@ -291,7 +296,7 @@ void VFDirEntity::InitStat(mode_t mode)
 {
 	memset(&stat_, 0, sizeof stat_);
 
-	stat_.st_mode = mode | S_IFDIR; // r-xr-xr-x and is a directory
+	stat_.st_mode = mode | S_IFDIR;
 	stat_.st_nlink = 1;
 
 	stat_.st_ouid = getuid();
@@ -311,7 +316,6 @@ unsigned VFDirEntity::Hash(const String& key)
 	return EntityMap::bitHash(s, strlen(s));
 }
 
-
 //
 // VFDirOcb
 //
@@ -328,11 +332,6 @@ VFDirOcb::~VFDirOcb()
 	VFLog(3, "VFDirOcb::~VFDirOcb()");
 }
 
-int VFDirOcb::Close()
-{
-	return 0;
-}
-
 int VFDirOcb::Stat()
 {
 	return 0;
@@ -343,9 +342,11 @@ int VFDirOcb::Read()
 	return 0;
 }
 
-int VFDirOcb::Write()
+int VFDirOcb::Write(pid_t pid, _io_write* req, _io_write_reply* reply)
 {
-	return 0;
+	pid = pid, req = req;
+	reply->status = ENOSYS;
+	return sizeof(reply->status);
 }
 
 int VFDirOcb::Seek()

@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1998/04/06 06:49:05  sroberts
+// implemented write(), implemented FileEntity factory, and removed unused
+// close() memthod
+//
 // Revision 1.4  1998/04/05 23:54:41  sroberts
 // added support for mkdir(), and a factory class for dir and file entities
 //
@@ -94,10 +98,9 @@ public:
 	VFDirOcb(VFDirEntity* dir);
 	~VFDirOcb();
 
-	int Close();
 	int Stat();
 	int Read();
-	int Write();
+	int Write(pid_t pid, _io_write* req, _io_write_reply* reply);
 	int Seek();
 	int Chmod();
 	int Chown();
