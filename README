@@ -1,0 +1,10 @@
+To build, type make in the "vf" directory. This will make
+vf.lib and vf_ram.
+
+The cd into "tarfs" and type make. This will make vf_tar
+and tart (the tar archive class tester).
+
+If this doesn't work for you, the makefiles are quite simple,
+and please e-mail me about any problems you have:
+  sam@uniserve.com
+
