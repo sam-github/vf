@@ -4,6 +4,9 @@
 // Copyright (c) 1999, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1999/04/24 04:54:43  sam
+// default for -p is now the name of the file minus any extension
+//
 // Revision 1.2  1999/04/24 04:41:46  sam
 // added support for symbolic links, and assorted bugfixes
 //
@@ -31,7 +34,8 @@
 usage: vf_tar [-hv] [-p vf] tarfile
     -h   print help message
     -v   increse the verbosity level
-    -p   path of virtual file system to create
+    -p   path of virtual file system to create, default is the base
+         name of the file, without any extension
     -u   attempt to use the user and group of the tar archive member to find
          the local uid and gid
 
@@ -109,8 +113,12 @@ int GetOpts(int argc, char* argv[])
 	}
 
 	if(!pathOpt) {
-		pathOpt = new char[strlen(tarOpt) + 1];
-		strcpy(pathOpt, tarOpt);
+		char path[_MAX_PATH];
+		char ext[_MAX_EXT];
+		_splitpath(tarOpt, 0, 0, path, ext);
+
+		pathOpt = new char[strlen(path) + 1];
+		strcpy(pathOpt, path);
 	}
 
 	return 0;
