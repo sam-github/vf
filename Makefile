@@ -26,14 +26,14 @@ ALL = $(LIB) $(EXE) $(DOC)
 # default targets
 .PHONY: all vf deps
 
+build: all vfs
+
 all: $(ALL)
 
 docs: $(DOC)
 
 vfs: $(LIB)
 	for d in $(VF); do $(MAKE) -C $$d; done
-
-build: all vfs
 
 # special targets
 
@@ -59,6 +59,7 @@ empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort $(DEP)
 
 install: build
+	mkdir -p $(prefix)/bin
 	cp tar/untar $(prefix)/bin
 	cp ramfs/vf_ram $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_ram mount_ram
 	cp tarfs/vf_tar $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_tar mount_tar
@@ -119,6 +120,9 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.19  1999/12/16 04:51:48  sam
+# now does recursive build by default, and does mkdir before the install
+#
 # Revision 1.18  1999/12/05 01:51:40  sam
 # added install target, and tweaked release target
 #
