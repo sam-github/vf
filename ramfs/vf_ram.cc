@@ -1,9 +1,12 @@
 //
-// vf_test.cc
+// vf_ram.cc
 //
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1999/04/24 04:37:06  sam
+// added support for symbolic links
+//
 // Revision 1.4  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -26,12 +29,15 @@
 #include "vf_dir.h"
 
 #ifdef __USAGE
-%C - test driver for the virtual filesystem
+%C - an in-memory virtual filesystem
 
-usage: vf_test [-hv] [-p vf]
+usage: vf_ram [-hv] [-p vf]
     -h   print help message
     -v   increse the verbosity level
     -p   path of virtual file system to create
+
+Mounts a RAM filesystem at 'vf'. It is intended to be fully functional, but
+is primarily a test of the virtual filesystem framework.
 #endif
 
 // globals

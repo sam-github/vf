@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.9  1999/04/24 04:37:06  sam
+// added support for symbolic links
+//
 // Revision 1.8  1999/04/11 06:40:55  sam
 // cleaned up code to stop unused arg warnings
 //
@@ -36,12 +39,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/fsys.h>
+#include <sys/psinfo.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "vf_log.h"
 #include "vf_dir.h"
 #include "vf_file.h"
+#include "vf_syml.h"
 
 //
 // VFDirFactory
@@ -52,17 +58,35 @@ VFDirFactory::VFDirFactory(mode_t mode) :
 {
 }
 
-VFEntity* VFDirFactory::NewDir(_fsys_mkspecial* req)
+VFEntity* VFDirFactory::NewDir()
 {
-	VFEntity* entity = new VFDirEntity(req ? req->mode : mode_, this);
+	return NewSpecial();
+}
+
+VFEntity* VFDirFactory::NewSpecial(_fsys_mkspecial* req)
+{
+	VFEntity* entity = 0;
+
+	// default is to make a directory
+	if(!req || S_ISDIR(req->mode)) {
+		entity = new VFDirEntity(mode_, -1, -1, this);
+	} else if(S_ISLNK(req->mode)) {
+		const char* pname = &req->path[0] + PATH_MAX + 1;
+		entity = new VFSymLinkEntity(pname);
+	} else {
+		errno = ENOTSUP;
+		return 0;
+	}
+
 	if(!entity) { errno = ENOMEM; }
+
 	return entity;
 }
 
 VFEntity* VFDirFactory::NewFile(_io_open* req)
 {
 	VFEntity* entity = new VFRamFileEntity(req ? req->mode : mode_);
-	if(!entity) { errno = ENOSYS; }
+	if(!entity) { errno = ENOMEM; }
 	return entity;
 }
 
@@ -70,11 +94,11 @@ VFEntity* VFDirFactory::NewFile(_io_open* req)
 // VFDirEntity
 //
 
-VFDirEntity::VFDirEntity(mode_t mode, VFDirFactory* factory) :
+VFDirEntity::VFDirEntity(mode_t mode, uid_t uid, gid_t gid, VFDirFactory* factory) :
 	map_(&Hash),
 	factory_(factory)
 {
-	InitStat(mode);
+	InitStat(mode, uid, gid);
 }
 
 // need another ctor that takes a stat as an arg
@@ -202,17 +226,17 @@ int VFDirEntity::Unlink()
 	return 0;
 }
 
-int VFDirEntity::MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply)
+int VFDirEntity::MkSpecial(const String& path, _fsys_mkspecial* req, _fsys_mkspecial_reply* reply)
 {
-	VFLog(2, "VFDirEntity::MkDir(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::MkSpecial(\"%s\")", (const char *) path);
 
 	if(!factory_)
 	{
 		reply->status = ENOSYS;
-		return sizeof(*reply);
+		return 0;
 	}
 	
-	VFEntity* entity = factory_->NewDir(req);
+	VFEntity* entity = factory_->NewSpecial(req);
 
 	if(!entity)
 	{
@@ -229,10 +253,44 @@ int VFDirEntity::MkDir(const String& path, _fsys_mkspecial* req, _fsys_mkspecial
 
 	if(reply->status != EOK)
 	{
+		VFLog(2, "VFDirEntity::MkSpecial() failed: [%d] %s",
+			reply->status, strerror(reply->status));
+
 		delete entity;
 	}
 
-	return sizeof(*reply);
+	return sizeof(reply->status);
+}
+
+int VFDirEntity::ReadLink(
+	const String& path,
+	_fsys_readlink* req,
+	_fsys_readlink_reply* reply)
+{
+	VFLog(2, "VFDirEntity::ReadLink(\"%s\")", (const char *) path);
+
+	if(path == "")
+	{
+		reply->status = EINVAL;
+
+		return sizeof(reply->status);
+	}
+
+	String lead;
+	String tail;
+	SplitPath(path, lead, tail);
+
+	VFEntity* entity = map_[lead];
+
+	if(!entity)
+	{
+		VFLog(2, "VFDirEntity::ReadLink() failed: no entity");
+
+		reply->status = ENOENT;
+		return 0;
+	}
+
+	return entity->ReadLink(tail, req, reply);
 }
 
 bool VFDirEntity::Insert(const String& path, VFEntity* entity)
@@ -303,15 +361,15 @@ void VFDirEntity::SplitPath(const String& path, String& lead, String& tail)
 	}
 }
 
-void VFDirEntity::InitStat(mode_t mode)
+void VFDirEntity::InitStat(mode_t mode, uid_t uid, gid_t gid)
 {
 	memset(&stat_, 0, sizeof stat_);
 
 	stat_.st_mode = mode | S_IFDIR;
 	stat_.st_nlink = 1;
 
-	stat_.st_ouid = getuid();
-	stat_.st_ogid = getgid();
+	stat_.st_ouid = uid != -1 ? uid :getuid();
+	stat_.st_ogid = gid != -1 ? gid :getgid();
 
 	stat_.st_ftime =
 	  stat_.st_mtime =

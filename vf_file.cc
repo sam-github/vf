@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.6  1999/04/24 04:37:06  sam
+// added support for symbolic links
+//
 // Revision 1.5  1999/04/11 06:41:37  sam
 // split FileEntity into a RamFileEntity and a base FileEntity that is used by
 // the FileOcb, turns out most of the FileEntity is reuseable, just the actual
@@ -35,6 +38,11 @@
 //
 // VFFileEntity
 //
+
+VFFileEntity::VFFileEntity()
+{
+	memset(&stat_, 0, sizeof(stat_));
+}
 
 VFOcb* VFFileEntity::Open(
 	const String& path,
@@ -98,17 +106,37 @@ int VFFileEntity::Unlink()
 	return 0;
 }
 
-int VFFileEntity::MkDir(
+int VFFileEntity::MkSpecial(
 	const String& path,
 	_fsys_mkspecial* req,
 	_fsys_mkspecial_reply* reply
 	)
 {
-	VFLog(2, "VFFileEntity::MkDir(\"%s\")", (const char *) path);
+	VFLog(2, "VFFileEntity::MkSpecial(\"%s\")", (const char *) path);
 
 	req = req;
 
 	reply->status = ENOTDIR;
+
+	return sizeof(reply->status);
+}
+
+int VFFileEntity::ReadLink(
+	const String& path,
+	_fsys_readlink* req,
+	_fsys_readlink_reply* reply
+	)
+{
+	VFLog(2, "VFFileEntity::ReadLink(\"%s\")", (const char *) path);
+
+	req = req;
+
+	if(path == "") {
+		reply->status = EINVAL;
+	} else { 
+		reply->status = ENOTDIR;
+	}
+
 	return sizeof(reply->status);
 }
 
@@ -123,6 +151,22 @@ bool VFFileEntity::Insert(const String& path, VFEntity* entity)
 struct stat* VFFileEntity::Stat()
 {
 	return &stat_;
+}
+
+int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+{
+	pid = pid; nbytes = nbytes; offset = offset;
+
+	errno = ENOTSUP;
+	return -1;
+}
+
+int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+{
+	pid = pid; nbytes = nbytes; offset = offset;
+
+	errno = ENOTSUP;
+	return -1;
 }
 
 //

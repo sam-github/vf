@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.7  1999/04/24 04:37:06  sam
+// added support for symbolic links
+//
 // Revision 1.6  1998/04/28 07:23:50  sroberts
 // changed Handle() to Service() - the name was confusing me - and added
 // readable system message names to debug output
@@ -144,7 +147,11 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 		break;
 
 	case _FSYS_MKSPECIAL:
-		size = root_->MkDir(msg->mkdir.path, &msg->mkdir, &msg->mkdir_reply);
+		size = root_->MkSpecial(msg->mkspec.path, &msg->mkspec, &msg->mkspec_reply);
+		break;
+
+	case _FSYS_READLINK:
+		size = root_->ReadLink(msg->rdlink.path, &msg->rdlink, &msg->rdlink_reply);
 		break;
 
 	case _IO_HANDLE:
@@ -158,7 +165,14 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 					msg->open_reply.status = errno;
 				}
 			}
-			size = sizeof msg->open_reply;
+			size = sizeof(msg->open_reply);
+
+			// An open may cause path rewriting if entity is a symbolic link.
+			if(msg->status == EMORE)
+			{
+				size = sizeof(msg->open) + PATH_MAX;
+			}
+
 			} break;
 
 		default:
@@ -170,7 +184,6 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 		}
 		break;
 
-
 	case _IO_OPEN: {
 		VFOcb* ocb = root_->Open(msg->open.path, &msg->open, &msg->open_reply);
 
@@ -181,6 +194,12 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 		}
 
 		size = sizeof(msg->open_reply);
+
+		// An open may cause path rewriting if entity is a symbolic link.
+		if(msg->status == EMORE)
+		{
+			size = sizeof(msg->open) + PATH_MAX;
+		}
 
 		} break;
 
@@ -274,7 +293,10 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 
 	} // end switch(msg->type)
 
-	assert(size != -1);
+	// returning 0 is allowed, its an ok way of saying just return the default
+	if(size <= 0) {
+		size = sizeof(msg->status);
+	}
 
 	return size;
 }
@@ -330,6 +352,7 @@ static const char* VFManager::MessageName(msg_t type)
 	case 0x0116: return "IO_SELECT"; 
 	case 0x0117: return "IO_QIOCTL"; 
 	case 0x0202: return "FSYS_MKSPECIAL"; 
+	case 0x0216: return "FSYS_READLINK"; 
 	default: return "unknown";
 	}
 }
