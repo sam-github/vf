@@ -67,19 +67,22 @@ stop:
 %: %.c
 	$(LINK.c) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
-	-usemsg $@ $<
+	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
 %: %.cc
 	$(LINK.cc) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
-	-usemsg $@ $<
+	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
 
 # $Log$
+# Revision 1.2  1999/07/21 13:44:02  sam
+# usemsg was missing -c option
+#
 # Revision 1.1  1999/07/19 15:33:32  sam
 # Initial revision
 #
