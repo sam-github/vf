@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/06/21 12:37:27  sam
+// implemented sysmsg... version
+//
 // Revision 1.8  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -111,12 +114,9 @@ VFEntity* VFRamEntityFactory::NewFile(_io_open* req)
 // vf_ram: globals
 //
 
-int vOpt = 0;
+int		vOpt = 0;
+char*	pathOpt = "ram";
 
-char* pathOpt = "ram";
-
-VFManager* vfmgr = new VFManager;
-VFIoMsg* msg = new VFIoMsg;
 
 int GetOpts(int argc, char* argv[])
 {
@@ -150,7 +150,11 @@ int main(int argc, char* argv[])
 
 	VFEntity* root = new VFDirEntity(0555, -1, -1, new VFRamEntityFactory);
 
-	if(!vfmgr->Init(root, pathOpt, vOpt))
+	VFVersion vfver("vf_ram", 0.02);
+
+	VFManager vfmgr(vfver);
+
+	if(!vfmgr.Init(root, pathOpt, vOpt))
 	{
 		printf("VFManager init failed: [%d] %s\n",
 			errno, strerror(errno)
@@ -158,7 +162,7 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	vfmgr->Run();
+	vfmgr.Run();
 
 	assert(0);
 

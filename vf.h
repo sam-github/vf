@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/06/21 12:36:22  sam
+// implemented sysmsg... version
+//
 // Revision 1.8  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -51,11 +54,13 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <string.hpp>
+
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/fsys_msg.h>
 #include <sys/io_msg.h>
-#include <string.hpp>
+#include <sys/sys_msg.h>
 
 #if __WATCOMC__ < 1100
 	typedef int bool;

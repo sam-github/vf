@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/06/21 12:36:22  sam
+// implemented sysmsg... version
+//
 // Revision 1.13  1999/06/21 10:28:20  sam
 // fixed bug causing random return status of unsupported functions
 //
@@ -66,6 +69,7 @@
 #include <stdlib.h>
 #include <sys/kernel.h>
 #include <sys/prfx.h>
+#include <sys/psinfo.h>
 
 #include <strstream.h>
 
@@ -139,6 +143,11 @@ private:
 // VFManager
 //
 
+VFManager::VFManager(const VFVersion& version) :
+		version_(version)
+{
+}
+
 int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 {
 	if(!root || !mount)	{ errno = EINVAL; return false; }
@@ -146,11 +155,24 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 	root_ = root;
 	mount_ = mount;
 
+	// set verbosity level
+
 	VFLevel(mount, verbosity);
+
+
+	// initialize ocb map
 
 	ocbMap_ = new VFOcbMap;
 
 	if(!ocbMap_) { errno = ENOMEM; return false; }
+
+	// declare ourselves as a server, and get messages in priority order
+
+	long pflags = _PPF_PRIORITY_REC | _PPF_SERVER;
+
+	if(qnx_pflags(pflags, pflags, 0, 0) == -1) { return false; }
+
+	// attach prefix
 
 	ostrstream os;
 
@@ -341,6 +363,29 @@ int VFManager::Service(pid_t pid, VFIoMsg* msg)
 //	case _IO_SELECT: break;
 //	case _IO_QIOCTL: break;
 
+	case _SYSMSG: {
+		short unsigned subtype = msg->sysmsg.hdr.subtype;
+
+		switch(subtype)
+		{
+		case _SYSMSG_SUBTYPE_VERSION:
+			msg->sysmsg_reply.hdr.status	= EOK;
+			msg->sysmsg_reply.hdr.zero		= 0;
+			msg->sysmsg_reply.body.version	= version_;
+
+			size = sizeof(msg->sysmsg_reply);
+
+			break;
+		
+		default:
+			VFLog(1, "unknown msg type SYSMSG subtype %s (%d)",
+				SysmsgSubtypeName(subtype), subtype);
+			msg->status = ENOSYS;
+			size = sizeof(msg->status);
+			break;
+		}
+	} break;
+
 	default:
 		VFLog(1, "unknown msg type %s (%#x)", MessageName(type), type);
 
@@ -387,6 +432,8 @@ static const char* VFManager::MessageName(msg_t type)
 {
 	switch(type)
 	{
+	case 0x0000: return "SYSMSG";
+
 	case 0x0101: return "IO_OPEN";
 	case 0x0102: return "IO_CLOSE";
 	case 0x0103: return "IO_READ";
@@ -475,6 +522,19 @@ static const char* VFManager::HandleOflagName(short int oflag)
 	case 4:		return "IO_HNDL_UTIME";
 	case 5:		return "IO_HNDL_LOAD";
 	case 6:		return "IO_HNDL_CLOAD";
+	default:	return "undefined";
+	}
+}
+
+static const char* VFManager::SysmsgSubtypeName(short unsigned subtype)
+{
+	switch(subtype)
+	{
+	case 0:		return "DEATH";
+	case 1:		return "SIGNAL";
+	case 2:		return "TRACE";
+	case 3:		return "VERSION";
+	case 4:		return "SLIB";
 	default:	return "undefined";
 	}
 }

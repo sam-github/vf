@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/06/21 12:41:08  sam
+// implemented sysmsg... version
+//
 // Revision 1.8  1999/06/20 13:37:13  sam
 // factory interface changed
 //
@@ -209,7 +212,8 @@ int GetOpts(int argc, char* argv[])
 
 void main(int argc, char* argv[])
 {
-	VFManager* vfmgr = new VFManager;
+	VFVersion	vfver("vf_tar", 1.1);
+	VFManager	vfmgr(vfver);
 
 	VFLevel("vf_tar", vOpt);
 
@@ -259,11 +263,11 @@ void main(int argc, char* argv[])
 		}
 	}
 
-	if(!vfmgr->Init(root, pathOpt, vOpt)) {
+	if(!vfmgr.Init(root, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
 
-	vfmgr->Run();
+	vfmgr.Run();
 }
 

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/06/21 12:36:22  sam
+// implemented sysmsg... version
+//
 // Revision 1.10  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -123,9 +126,46 @@ union VFIoMsg
 	//struct _io_select 			
 	//struct _io_select_reply 			
 
+	// the system message structure is lame, build a better one here
+	struct _sysmsg {
+		struct _sysmsg_hdr	hdr;
+		union {
+			struct _sysmsg_signal	signal;
+			struct _sysmsg_version	version;
+		} body;
+	};
+
+	struct _sysmsg_reply {
+		struct _sysmsg_hdr_reply	hdr;
+		union {
+			struct _sysmsg_version_reply	version;
+		} body;
+	};
+
+	struct _sysmsg					sysmsg;
+	struct _sysmsg_reply			sysmsg_reply;
+
 	// reserve space because struct _io_open and such have buffers of
 	// unspecified length as members
-	char reserve [1024];
+	char reserve [4096 + 2*sizeof(_io_read)];
+};
+
+struct VFVersion : public _sysmsg_version_reply
+{
+	VFVersion(
+		const char* name_,
+		float version_ = 1.00, char letter_ = 'A',
+		const char* date_ = __DATE__)
+	{
+		strncpy(name, name_, sizeof(name));
+		strncpy(date, date_, sizeof(date));
+
+		version = (short unsigned)(version_*100);
+
+		letter = letter_;
+
+		more = 0;
+	}
 };
 
 class OcbMap;
@@ -133,6 +173,8 @@ class OcbMap;
 class VFManager
 {
 public:
+	VFManager(const VFVersion& version);
+
 	Init(VFEntity *root, const char* mount, int verbosity = 1);
 
 	int Service(pid_t pid, VFIoMsg* msg);
@@ -141,6 +183,7 @@ public:
 
 	static const char* MessageName(msg_t type);
 	static const char* HandleOflagName(short int oflag);
+	static const char* SysmsgSubtypeName(short unsigned subtype);
 
 private:
 	VFOcbMap* ocbMap_;
@@ -149,6 +192,8 @@ private:
 
 	VFEntity*   root_;
 	const char* mount_;
+
+	const VFVersion&	version_;
 };
 
 #endif
