@@ -1,0 +1,5 @@
+
+* Implement heuristics for eliding uninteresting directoory prefixes.
+
+* Implement heuristics for adjusting locations of symbolic links.
+
