@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.18  1999/10/04 03:31:38  sam
+// added mechanism to fork and wait for child to the manager
+//
 // Revision 1.17  1999/09/27 02:51:02  sam
 // made servers priority float, and tweaked verbosity of a log message
 //
@@ -78,6 +81,7 @@
 // Initial revision
 //
 
+#include <signal.h>
 #include <stdlib.h>
 #include <sys/kernel.h>
 #include <sys/prfx.h>
@@ -97,7 +101,7 @@
 //
 
 VFManager::VFManager(const VFVersion& version) :
-	version_(version), root_(0), mount_(0)
+	version_(version), root_(0), mount_(0), parent_(-1)
 {
 }
 
@@ -106,23 +110,23 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 	if(!root || !mount)	{ errno = EINVAL; return 0; }
 
 	root_ = root;
-	mount_ = mount;
 
 	// set verbosity level
 
 	VFLevel(mount, verbosity);
 
-	// cause fdmap to be initialized
-	VFFdMap::Fd();
-
-	// declare ourselves as a server, and get messages in priority order,
-	// and float our priority
-
-	long pflags = _PPF_PRIORITY_REC | _PPF_SERVER | _PPF_PRIORITY_FLOAT;
+	// set our process flags
+	long pflags =
+		  _PPF_PRIORITY_REC		// receive requests in priority order
+		| _PPF_SERVER			// we're a server, send us version requests
+		| _PPF_PRIORITY_FLOAT	// float our priority to clients
+		//| _PPF_SIGCATCH		// catch our clients signals, to clean up
+		;
 
 	if(qnx_pflags(pflags, pflags, 0, 0) == -1) { return 0; }
 
-	// attach prefix
+	// if our mount point is relative, prefix the cwd to it, and chop trailing
+	// '/' characters from the mount point
 
 	ostrstream os;
 
@@ -132,13 +136,96 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 	}
 	os << mount << '\0';
 
-	assert(os.str()[os.pcount() - 1] == '\0');
-
-	if(qnx_prefix_attach(os.str(), 0, 0) == -1) { return 0; }
-
-	VFLog(2, "VFManager::Init() attached %s", os.str());
+	char* m = os.str();
+	while(strlen(m) > 0 && m[strlen(m) - 1] == '/') {
+		m[strlen(m) - 1] = '\0';
+	}
+	mount_ = m;
 
 	return 1;
+}
+
+void VFManager::Start(int nodaemon)
+{
+	if(nodaemon == 0)
+	{
+		pid_t	child = fork();
+
+		switch(child)
+		{
+		case -1:
+			VFLog(0, "VFManager::Start() fork() failed: [%d] %s", VFERR(errno));
+			exit(1);
+
+			// the child will become the daemon
+		case 0:
+			if(Receive(getppid(), 0, 0) == -1) {
+				VFLog(0, "VFManager::Start() Receive(%d) failed: [%d] %s",
+					getppid(), VFERR(errno));
+				exit(1);
+			}
+			// do daemony stuff
+			setsid();
+			close(0);
+
+			signal(SIGHUP, SIG_IGN);
+			signal(SIGINT, SIG_IGN);
+
+			// remember to notify parent when we Run()
+			parent_ = getppid();
+
+			break;
+
+			// the parent will wait for the child to indicate that it has
+			// started running
+		default:
+			if(Send(child, 0, 0, 0, 0) == -1) {
+				VFLog(0, "VFManager::Start() Send() failed: [%d] %s",
+					VFERR(errno));
+				exit(1);
+			}
+			exit(0);
+		}
+	}
+}
+
+void VFManager::Run()
+{
+	VFLog(3, "VFManager::Run()");
+
+	if(!mount_ || qnx_prefix_attach(mount_, 0, 0) == -1) {
+		VFLog(0, "VFManager::Start() qnx_prefix_attach(%s) failed: [%d] %s",
+			mount_, VFERR(errno));
+		exit(1);
+	}
+
+	// free up our parent, if we have one
+	if(parent_ != -1) { Reply(parent_, 0, 0); }
+
+	pid_t pid;
+	int  status;
+
+	while(1)
+	{
+		pid = Receive(0, &msg_, sizeof(msg_));
+
+		if(pid == -1) {
+			if(errno != EINTR) {
+				VFLog(2, "Receive() failed: [%d] %s", strerror(errno));
+			}
+			continue;
+		}
+
+		status = Service(pid, &msg_);
+
+		VFLog(4, "VFManager::Run() serviced with status %d (%s)",
+			status, status == -1 ? "none" : strerror(status));
+
+		if(status >= EOK) {
+			msg_.status = status;
+			ReplyMsg(pid, &msg_, sizeof(msg_.status));
+		}
+	}
 }
 
 int VFManager::Service(pid_t pid, VFMsg* msg)
@@ -323,36 +410,6 @@ int VFManager::Service(pid_t pid, VFMsg* msg)
 	} // end switch(msg->type)
 
 	return status;
-}
-
-void VFManager::Run()
-{
-	VFLog(3, "VFManager::Run()");
-
-	pid_t pid;
-	int  status;
-
-	while(1)
-	{
-		pid = Receive(0, &msg_, sizeof(msg_));
-
-		if(pid == -1) {
-			if(errno != EINTR) {
-				VFLog(2, "Receive() failed: [%d] %s", strerror(errno));
-			}
-			continue;
-		}
-
-		status = Service(pid, &msg_);
-
-		VFLog(4, "VFManager::Run() serviced with status %d (%s)",
-			status, status == -1 ? "none" : strerror(status));
-
-		if(status >= EOK) {
-			msg_.status = status;
-			Reply(pid, &msg_, sizeof(msg_.status));
-		}
-	}
 }
 
 void VFManager::ReplyMsg(pid_t pid, const void* msg, size_t size)

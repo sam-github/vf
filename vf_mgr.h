@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/10/04 03:31:38  sam
+// added mechanism to fork and wait for child to the manager
+//
 // Revision 1.13  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -178,11 +181,11 @@ class VFManager
 public:
 	VFManager(const VFVersion& version);
 
-	virtual int Init(VFEntity *root, const char* mount, int verbosity = 1);
+	int 	Init(VFEntity *root, const char* mount, int verbosity = 1);
+	void	Start(int nodaemon = 0);
+	void Run();
 
 	virtual int Service(pid_t pid, VFMsg* msg);
-
-	void Run();
 
 	// convert numbers to string names, for logging and debugging
 	static const char* MessageName(msg_t type);
@@ -196,6 +199,7 @@ private:
 	VFMsg		msg_;
 	VFEntity*   root_;
 	const char* mount_;
+	pid_t		parent_;
 };
 
 #endif
