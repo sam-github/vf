@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/10/17 16:22:41  sam
+// Reinstalled a clean Watcom10.6, and string.hpp is String.h now.
+//
 // Revision 1.11  1999/08/09 15:29:29  sam
 // distinct inode numbers implemented, now find works
 //
@@ -71,7 +74,7 @@
 #include <sys/io_msg.h>
 #include <sys/sys_msg.h>
 
-#include <string.hpp>
+#include <String.h>
 
 // forward references
 class VFEntity;
