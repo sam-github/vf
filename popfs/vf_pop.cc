@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/06/18 14:56:03  sam
+// now download file and set stat correctly
+//
 // Revision 1.1  1999/05/17 04:37:40  sam
 // Initial revision
 //
@@ -58,8 +61,10 @@ PopFail(const char* cmd, pop3& pop)
 class PopFile : public VFFileEntity
 {
 public:
-	PopFile(int msg, pop3& pop) : pop_(pop), msg_(msg), data_(0)
+	PopFile(int msg, pop3& pop, int size) : pop_(pop), msg_(msg), data_(0)
 	{
+		InitStat(S_IRUSR);
+		stat_.st_size = size;
 	}
 
 	~PopFile() { delete [] data_; }
@@ -79,8 +84,21 @@ public:
 
 		if(!data_) {
 			ostrstream mail;
-			mail << "To: sam\n" << '\0';
-			data_ = mail.str();
+			if(pop_->retr(msg_, &mail))
+			{
+				size_ = mail.pcount();
+				data_ = mail.str();
+
+				assert(size_ == stat_.st_size);
+
+				stat_.st_size = size_;
+
+				VFLog(2, "PopFile::Read() retr msg %d size %ld", msg_, size_);
+			}
+			else
+			{
+				VFLog(1, "retr %d failed: %s", msg_, pop_->response());
+			}
 		}
 
 		// adjust nbytes if the read would be past the end of file
@@ -113,12 +131,12 @@ public:
 		int count;
 		if(!pop_->stat(&count)) { PopFail("stat", pop_); }
 
-		int size;
-
 		for(int msg = 1; msg <= count; ++msg) {
+			int size;
+
 			if(!pop_->list(msg, &size)) { PopFail("list", pop_); }
 
-			if(!Insert(ItoA(msg), new PopFile(msg, pop_))) {
+			if(!Insert(ItoA(msg), new PopFile(msg, pop_, size))) {
 				VFLog(0, "insert msg failed: [%d] %s\n", errno, strerror(errno));
 				exit(1);
 			}
@@ -143,7 +161,7 @@ password is optional, probably shouldn't be specified on the command
 line (for security reasons), and will be prompted for if not supplied.
 Messages on the server can be read or deleted. Deleted mail will actually
 be deleted on server only on normal exit, caused by doing a rmdir on the
-vfsys path (causing vf_pop3 to exit).
+vfsys path (causing vf_pop3 to exit gracefully).
 #endif
 
 int		vOpt		= 0;
