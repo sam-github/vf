@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/07/11 11:26:46  sam
+// Added arg to init stat to a particular type, defaults to reg file.
+//
 // Revision 1.10  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -198,14 +201,12 @@ int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 	return -1;
 }
 
-void VFFileEntity::InitStat(mode_t mode)
+void VFFileEntity::InitStat(mode_t perms, mode_t type)
 {
 	memset(&stat_, 0, sizeof stat_);
 
 	// clear all but permission bits from mode
-	mode &= 0777;
-
-	stat_.st_mode = mode | S_IFREG;
+	stat_.st_mode = (S_IFMT & type) | (S_IPERMS & perms);
 	stat_.st_nlink = 1;
 
 	stat_.st_ouid = getuid();

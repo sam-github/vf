@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.8  1999/07/11 11:26:46  sam
+// Added arg to init stat to a particular type, defaults to reg file.
+//
 // Revision 1.7  1999/06/20 10:09:06  sam
 // Made InitStat a protected member of the class that had the stat_ data.
 //
@@ -71,7 +74,7 @@ public:
 protected:
 	struct stat stat_;
 
-	void InitStat(mode_t mode);
+	void InitStat(mode_t perms, mode_t type = S_IFREG);
 };
 
 class VFFileOcb : public VFOcb
