@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.16  2000/01/13 02:30:33  sam
+// fixed usage message, and bug with absolute tar paths
+//
 // Revision 1.15  1999/12/05 01:59:00  sam
 // now using the rewritten <tar/tararch.h> classes
 //
@@ -84,18 +87,27 @@
 #include <tar/tararch.h>
 
 #ifdef __USAGE
-%C - a tar archive virtual filesystem
+%C - mounts a tar archive as a virtual filesystem
 
-usage: vf_tar [-hvd] [-e] file [vf]
+usage: vf_tar [-hvd] file [vf]
     -h   Print this helpful message.
     -v   Increase the verbosity level.
-    -d   Don't become a daemon, default is to fork into the background after
-         reading the tar file.
-    -e   Elide top-level directory if there is only one and use that name as
-         the mount path if 'vf' was not explicitly specified.
+    -d   Don't become a daemon, default is to fork into the background
+         after reading the tar file.
 
-Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'. It can be
-unmounted in the standard way.
+Mounts 'file' as a virtual (read-only) filesystem at 'vf'. It can be
+unmounted in the standard way, causing the virtual filesystem manager
+to exit.
+
+If there is only a single top-level directory in the tar archive, and
+'vf' was not explicitly specified, then that directory is elided, and
+it's name is used as the value of 'vf'. Otherwise, the base name of
+the archive, minus an extension, is used as 'vf'.
+
+This heuristic is an attempt at dealing with the common case of archived
+sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
+leading path element out, and naming the virtual filesystem path after
+that leading element.
 
 It isn't clear what the correct way of dealing with absolute paths is. The
 current behaviour is:
@@ -109,12 +121,6 @@ current behaviour is:
 In the second case, the archive could be searched for a member matching the
 target path, and if present the symbolic link could be adjusted to refer to
 that member.
-
-The -e option is an attempt at dealing with the common case of archived
-sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
-leading path element out, and naming the virtual filesystem path after
-that leading element. It may become the default because I use it almost
-all the time.
 #endif
 
 //
@@ -180,13 +186,12 @@ private:
 
 int		vOpt	= 0;
 int		dOpt	= 0;
-int		eOpt	= 0;
 char*	tarOpt	= 0;
 char*	pathOpt	= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvdet:")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvdt:")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -199,10 +204,6 @@ int GetOpts(int argc, char* argv[])
 
 		case 'd':
 			dOpt = 1;
-			break;
-
-		case 'e':
-			eOpt = 1;
 			break;
 
 		case 't': // ignore the -t option passed by mount
@@ -235,8 +236,12 @@ void main(int argc, char* argv[])
 	Tar::Reader tar(tarOpt, Tar::Reader::TAR);
 
 	if(!tar.Open()) {
-		VFLog(0, "%s failed: [%d] %s",
-			tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
+		if(tar.ErrorNo() == ENOENT) {
+			VFLog(0, "No standard tar headers found, is this a tar archive?");
+		} else {
+			VFLog(0, "Reader::Open() said %s failed: [%d] %s",
+				tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
+		}
 		exit(1);
 	}
 
@@ -246,14 +251,18 @@ void main(int argc, char* argv[])
 	VFDirEntity* root = new VFDirEntity(getuid(), getgid(), 0555 & ~mask, factory);
 
 	do {
-		VFLog(3, "member %s", tar.Path());
+		VFLog(3, "next '%s", tar.Path());
 
 		VFEntity* entity = factory->Create(tar);
 
-		int e = root->Insert(tar.Path(), entity);
+		const char* path = tar.Path();
+		if(*path == '/')
+			path++;
+
+		int e = root->Insert(path, entity);
 		if(e != EOK) {
 			VFLog(0, "inserting entity %s failed: [%d] %s",
-				tar.Path(), e, strerror(e));
+				path, e, strerror(e));
 			exit(1);
 		}
 	} while(tar.Next());
@@ -261,7 +270,7 @@ void main(int argc, char* argv[])
 	VFEntity* top = 0;
 
 	// check if there is only one top-level directory, and elide it if so
-	if(eOpt && root->Entries() == 1)
+	if(!pathOpt && root->Entries() == 1)
 	{
 		VFDirEntity::EntityNamePair* pair = root->EnPair(0);
 		
@@ -269,9 +278,7 @@ void main(int argc, char* argv[])
 		{
 			delete root;
 			top = pair->entity;
-		}
-		if(!pathOpt)
-		{
+		
 			ostrstream s;
 			s << pair->name << '\0';
 			pathOpt = s.str();
