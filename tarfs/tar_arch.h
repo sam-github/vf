@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.6  1999/08/09 15:17:56  sam
+// Ported framework modifications down.
+//
 // Revision 1.5  1999/07/19 15:18:48  sam
 // now reads GNU archives
 //
@@ -118,11 +121,11 @@ union TarRecord {
 		char isextended;
 	} ext_hdr;
 
-	int Int(const char* str) {	// assume octal, hope this is right!
+	int Int(const char* str) const {	// assume octal, hope this is right!
 		return strtol(str, 0, 8);
 	} 
 
-	int Stat(struct stat* stat)
+	int Stat(struct stat* stat) const
 	{
 		if(!stat) { return 0; }
 
@@ -169,9 +172,10 @@ public:
 
 	class Iterator
 	{
-	static inline void Dup(char*& dst, const char* src) {
-		TarArchive::Dup(dst, src);
-	}
+	private:
+		static inline void Dup(char*& dst, const char* src) {
+			TarArchive::Dup(dst, src);
+		}
 	public:
 		int ChUidGid(uid_t uid, gid_t gid = -1)
 		{
@@ -203,13 +207,13 @@ public:
 			if(ret == -1) { errno_ = dir_->ErrorNo(); }
 			return ret;
 		}
-		struct stat* Stat()
+		const struct stat* Stat() const
 		{
 			if(!valid_) { return 0; }
 
 			return &stat_;
 		}
-		int Stat(struct stat* stat)
+		int Stat(struct stat* stat) const
 		{
 			if(!valid_) { return 0; }
 

@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/08/09 15:16:23  sam
+// Ported framework modifications down.
+//
 // Revision 1.10  1999/08/03 06:14:55  sam
 // moved ram filesystem into its own subdirectory
 //
@@ -72,8 +75,13 @@ usage: vf_ram [-hv] [-p vf]
     -v   increse the verbosity level
     -p   path of virtual file system to create
 
-Mounts a RAM filesystem at 'vf'. It is intended to be fully functional, but
-is primarily a test of the virtual filesystem framework.
+Mounts a RAM filesystem at 'vf'.
+
+This is primarily a test of the virtual filesystem framework. Currently
+some basic filesystem operations such as execute, rename, and unlink,
+as well as any permissions checks are missing. These operations are
+being implemented, and as the framework supports them, so will the RAM
+filesystem.
 #endif
 
 //
@@ -83,25 +91,25 @@ is primarily a test of the virtual filesystem framework.
 class VFRamFileEntity : public VFFileEntity
 {
 public:
-	VFRamFileEntity(mode_t mode);
+	VFRamFileEntity(pid_t pid, mode_t perm);
 	~VFRamFileEntity();
 
-	int Write(pid_t pid, size_t nbytes, off_t offset);
-	int Read(pid_t pid, size_t nbytes, off_t offset);
+	int Write(pid_t pid, size_t nbytes, off_t* offset,
+			const void* data, int len);
+	int Read(pid_t pid, size_t nbytes, off_t* offset);
 
 private:
 	char* data_; // pointer to buffer
 	off_t dataLen_;  // length of data buffer
 	off_t fileSize_; // size of file data (may be less than dataLen_)
-
 };
 
-VFRamFileEntity::VFRamFileEntity(mode_t mode) :
-	data_	(0),
+VFRamFileEntity::VFRamFileEntity(pid_t pid, mode_t perm) :
+	VFFileEntity(pid, perm),
+	data_		(0),
 	dataLen_	(0),
 	fileSize_	(0)
 {
-	InitStat(mode);
 }
 
 VFRamFileEntity::~VFRamFileEntity()
@@ -111,80 +119,97 @@ VFRamFileEntity::~VFRamFileEntity()
 	free(data_);
 }
 
-int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t* offset,
+		const void* data, int len)
 {
-	VFLog(2, "VFRamFileEntity::Write() size %ld, offset %ld len %ld size %ld",
-		nbytes, offset, dataLen_, fileSize_);
+	VFLog(2, "VFRamFileEntity::Write() pid %d size %ld, offset %ld len %ld",
+		pid, nbytes, *offset, len);
+
+	data = data, len = len;
 
 	// grow the buffer if possible/necessary
-	if(offset + nbytes > dataLen_)
+	if(*offset + nbytes > dataLen_)
 	{
 		// for fast writes I should always allocate 2*dataLen_, and
 		// unallocate when fileSize_ is < dataLen_/4, for now I use the more
 		// memory conservative approach
-		char* b = (char*) realloc(data_, offset + nbytes);
-		if(b) { data_ = b; dataLen_ = offset + nbytes; }
+		char* b = (char*) realloc(data_, *offset + nbytes);
+		if(b) { data_ = b; dataLen_ = *offset + nbytes; }
 	}
 	// see if we can read any data into available space
-	if(offset >= dataLen_)
+	if(*offset >= dataLen_)
 	{
-		errno = ENOSPC;
-		return -1;
+		return ENOSPC;
 	}
-	if(offset > fileSize_)
+	if(*offset > fileSize_)
 	{
 		// offset past end of file, so zero data up to write point
-		memset(&data_[fileSize_], 0, offset - fileSize_);
+		memset(&data_[fileSize_], 0, *offset - fileSize_);
 	}
-	if(dataLen_ - offset < nbytes)
+	if(dataLen_ - *offset < nbytes)
 	{
 		// we can only partially fulfill the write request
-		nbytes = dataLen_ - offset;
+		nbytes = dataLen_ - *offset;
 	}
 
 	// ready to read nbytes into the data buffer from the offset of the
 	// "data" part of the write message
 	size_t dataOffset = offsetof(struct _io_write, data);
-	unsigned ret = Readmsg(pid, dataOffset, &data_[offset], nbytes);
+	unsigned incr = Readmsg(pid, dataOffset, &data_[*offset], nbytes);
 
-	if(ret != -1)
+	// XXX use the optimization of data/len
+
+	if(incr != -1)
 	{
 		VFLog(5, "VFRamFileEntity::Write() wrote \"%.*s\"",
-			__max(ret, 20),
-			&data_[offset]);
+			__max(incr, 20),
+			&data_[*offset]);
 
 		// update sizes if end of write is past current size
-		off_t end = offset + ret;
-		if(end > fileSize_) { fileSize_ = stat_.st_size = end; }
+		off_t end = *offset + incr;
+		if(end > fileSize_) { fileSize_ = info_.size = end; }
+
+		// update current ocb offset
+		*offset += incr;
 	}
 
-	return ret;
+	struct _io_write_reply reply;
+
+	reply.status = EOK;
+	reply.nbytes = incr;
+	reply.zero = 0;
+
+	return ReplyMsg(pid, &reply, sizeof reply);
 }
 
-int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
 {
 	VFLog(2, "VFRamFileEntity::Read() size %ld, offset %ld len %ld size %ld",
-		nbytes, offset, dataLen_, fileSize_);
+		nbytes, *offset, dataLen_, fileSize_);
 
 	// adjust nbytes if the read would be past the end of file
-	if(offset > fileSize_) {
+	if(*offset > fileSize_) {
 			nbytes = 0;
-	} else if(offset + nbytes > fileSize_) {
-		nbytes = fileSize_ - offset;
+	} else if(*offset + nbytes > fileSize_) {
+		nbytes = fileSize_ - *offset;
 	}
 
-	// ready to write nbytes from the data buffer to the offset of the
-	// "data" part of the read reply message
-	size_t dataOffset = offsetof(struct _io_read_reply, data);
-	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
+	struct _io_read_reply reply;
+	struct _mxfer_entry mx[2];
 
-	if(ret != -1) {
-		VFLog(5, "VFRamFileEntity::Read() read \"%.*s\"",
-			__max(ret, 20),
-			&data_[offset]);
+	reply.status = EOK;
+	reply.nbytes = nbytes;
+	reply.zero = 0;
+
+	_setmx(mx + 0, &reply, sizeof(reply) - sizeof(reply.data));
+	_setmx(mx + 1, &data_[*offset], nbytes);
+
+	if(Replymx(pid, 2, mx) != -1)
+	{
+		*offset += nbytes;
 	}
 
-	return ret;
+	return -1;
 }
 
 //
@@ -194,37 +219,23 @@ int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 class VFRamEntityFactory : public VFEntityFactory
 {
 public:
-	VFEntity* NewSpecial(_fsys_mkspecial* req);
-	VFEntity* NewFile(_io_open* req);
-};
-
-VFEntity* VFRamEntityFactory::NewSpecial(_fsys_mkspecial* req)
-{
-	VFEntity* entity = 0;
-
-	assert(req);
-
-	if(S_ISDIR(req->mode)) {
-		entity = new VFDirEntity(req->mode, -1, -1, this);
-	} else if(S_ISLNK(req->mode)) {
-		const char* pname = &req->path[0] + PATH_MAX + 1;
-		entity = new VFSymLinkEntity(pname);
-	} else {
-		errno = ENOTSUP;
-		return 0;
+	VFEntity* Link(pid_t pid, mode_t mode, const char* linkto)
+	{
+		return new VFSymLinkEntity(pid, mode, linkto);
 	}
 
-	if(!entity) { errno = ENOMEM; }
+	VFEntity* Dir(pid_t pid, mode_t mode)
+	{
+		return new VFDirEntity(pid, mode, this);
+	}
 
-	return entity;
-}
-
-VFEntity* VFRamEntityFactory::NewFile(_io_open* req)
-{
-	VFEntity* entity = new VFRamFileEntity(req->mode);
-	if(!entity) { errno = ENOMEM; }
-	return entity;
-}
+	VFEntity* File(pid_t pid, mode_t mode)
+	{
+		VFEntity* entity = new VFRamFileEntity(pid, mode);
+		if(!entity) { errno = ENOMEM; }
+		return entity;
+	}
+};
 
 //
 // vf_ram: globals
@@ -263,7 +274,9 @@ int main(int argc, char* argv[])
 {
 	GetOpts(argc, argv);
 
-	VFEntity* root = new VFDirEntity(0555, -1, -1, new VFRamEntityFactory);
+	mode_t mask = umask(0); umask(mask);
+
+	VFEntity* root = new VFDirEntity(getpid(), 0555 & ~mask, new VFRamEntityFactory);
 
 	VFVersion vfver("vf_ram", 0.02);
 

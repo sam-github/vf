@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.13  1999/08/09 15:17:56  sam
+// Ported framework modifications down.
+//
 // Revision 1.12  1999/07/19 15:14:02  sam
 // small changes and bugfixes
 //
@@ -108,7 +111,8 @@ that member.
 The -e option is an attempt at dealing with the common case of archived
 sub-directories, such as "yoyo-widgets-1.3.4/..." by stripping the single
 leading path element out, and naming the virtual filesystem path after
-that leading element.
+that leading element. It may become the default because I use it almost
+all the time.
 #endif
 
 //
@@ -118,21 +122,20 @@ that leading element.
 class VFTarEntityFactory : public VFEntityFactory
 {
 public:
-	VFTarEntityFactory(int uOpt) : uOpt_(uOpt) {}
-
-	VFEntity* AutoCreateDirectory()
+	VFTarEntityFactory(int uOpt) : uOpt_(uOpt)
 	{
-		VFEntity* entity = new VFDirEntity(0555, -1, -1, this);
+		mask_ = umask(0);
+		umask(mask_);
+	}
 
-		if(!entity) {
-			errno = ENOMEM;
-		}
-		return entity;
+	VFEntity* AutoDir()
+	{
+		return new VFDirEntity(getpid(), 0555 & ~mask_, this);
 	}
 
 	VFEntity* Create(TarArchive::iterator& it)
 	{
-		// attmempt to find the local user by name
+		// attempt to find the local user by name
 		if(uOpt_) {
 			struct passwd* pw = getpwnam(it.User());
 			struct group* gr = getgrnam(it.Group());
@@ -141,21 +144,25 @@ public:
 		}
 
 		VFEntity* entity = 0;
-		struct stat* stat = it.Stat();
+		const struct stat* stat = it.Stat();
 
 		if(S_ISREG(stat->st_mode)) {
 			entity = new VFTarFileEntity(it);
 		}
 		else if(S_ISDIR(stat->st_mode)) {
-			entity = new VFDirEntity(
-							stat->st_mode, stat->st_uid, stat->st_gid, this);
+			// XXX this is a hideous security hole!
+
+			entity = new VFDirEntity(stat->st_uid, stat->st_gid,
+							stat->st_mode, this);
 		}
 		else if(S_ISLNK(stat->st_mode)) {
-			entity = new VFSymLinkEntity(
-				it.Link(), stat->st_uid, stat->st_gid);
+			entity = new VFSymLinkEntity(stat->st_uid, stat->st_gid,
+							stat->st_mode, it.Link());
 		}
 		else {
 			VFLog(1, "unsupported tar file type");
+
+			// XXX try taring up a FIFO and seeing what this does
 			return 0;
 		}
 
@@ -167,7 +174,8 @@ public:
 	}
 
 private:
-	int uOpt_;
+	int		uOpt_;
+	mode_t	mask_;
 };
 
 
@@ -254,8 +262,10 @@ void main(int argc, char* argv[])
 		exit(1);
 	}
 
+	mode_t mask = umask(0); umask(mask);
+
 	VFTarEntityFactory* factory = new VFTarEntityFactory(uOpt);
-	VFDirEntity* root = new VFDirEntity(0555, -1, -1, factory);
+	VFDirEntity* root = new VFDirEntity(getuid(), getgid(), 0555 & ~mask, factory);
 
 	// This loop is slow but robust. Basically, we'll create intermediary
 	// directories to entities with default attributes if necessary, but
@@ -282,9 +292,15 @@ void main(int argc, char* argv[])
 
 				VFEntity* entity = factory->Create(it);
 
-				if(entity && !root->Insert(p, entity)) {
-					VFLog(0, "inserting %s failed: [%d] %s",
+				if(!entity) {
+					VFLog(0, "creating entity for %s failed: [%d] %s",
 						it.Path(), errno, strerror(errno));
+					exit(1);
+				}
+				int e = root->Insert(p, entity);
+				if(e != EOK) {
+					VFLog(0, "inserting entity %s failed: [%d] %s",
+						it.Path(), e, strerror(e));
 					exit(1);
 				}
 			}
@@ -297,7 +313,8 @@ void main(int argc, char* argv[])
 	if(eOpt && root->Entries() == 1)
 	{
 		VFDirEntity::EntityNamePair* pair = root->EnPair(0);
-		if(S_ISDIR(pair->entity->Stat()->st_mode))
+		
+		if(S_ISDIR(pair->entity->Info()->mode))
 		{
 			delete root;
 			top = pair->entity;

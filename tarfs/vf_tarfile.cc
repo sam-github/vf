@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/08/09 15:17:56  sam
+// Ported framework modifications down.
+//
 // Revision 1.3  1999/04/28 03:27:28  sam
 // Stamped sources with the GPL.
 //
@@ -45,21 +48,16 @@
 // VFTarFileEntity
 //
 
-char VFTarFileEntity::buffer[BUFSIZ];
+char VFTarFileEntity::buffer_[BUFSIZ];
 
 VFTarFileEntity::VFTarFileEntity(const TarArchive::iterator& file) :
+	VFFileEntity(file.Stat()->st_uid, file.Stat()->st_gid, file.Stat()->st_mode),
 	file_	(file)
 {
-//	file_ = file;
-
-	if(!file_.Stat(&stat_)) {
-		VFLog(0, "loading stat for %s failed: [%d] %s",
-			file_.Path(), file_.ErrorNo(), file_.ErrorString());
-		exit(1);
-	}
-	// need to massage the stat structure, see <sys/stat.h>
-	stat_.st_ouid = stat_.st_uid;
-	stat_.st_ogid = stat_.st_gid;
+	info_.size = file_.Stat()->st_size;
+	info_.mtime = file_.Stat()->st_mtime;
+	info_.atime = file_.Stat()->st_atime;
+	info_.ctime = file_.Stat()->st_ctime;
 }
 
 VFTarFileEntity::~VFTarFileEntity()
@@ -67,40 +65,47 @@ VFTarFileEntity::~VFTarFileEntity()
 	VFLog(3, "VFTarFileEntity::~VFTarFileEntity()");
 }
 
-int VFTarFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+int VFTarFileEntity::Write(pid_t pid, size_t nbytes, off_t* offset,
+		const void* data, int len)
 {
-	pid = pid; nbytes = nbytes; offset = offset;
+	pid = pid; nbytes = nbytes; offset = offset, data = data, len = len;
 
 	VFLog(2, "VFTarFileEntity::Write()");
 
-	errno = ENOSYS;
-	return -1;
+	return ENOTSUP;
 }
 
-int VFTarFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+int VFTarFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
 {
-	VFLog(2, "VFTarFileEntity::Read() nbytes %ld, offset %ld", nbytes, offset);
+	VFLog(2, "VFTarFileEntity::Read() nbytes %ld, offset %ld", nbytes, *offset);
 
-	if(nbytes > BUFSIZ) { nbytes = BUFSIZ; }
+	// XXX need to loop to implement reads larger than BUFSIZ
 
-	file_.Seek(offset);
+	if(nbytes > sizeof(buffer_)) { nbytes = sizeof(buffer_); }
 
-	unsigned ret = file_.Read(buffer, nbytes);
+	file_.Seek(*offset);
 
-	if(ret == -1) {
-		errno = file_.ErrorNo();
-	} else {
-		// ready to write nbytes from the data buffer to the offset of the
-		// "data" part of the read reply message
-		size_t dataOffset = offsetof(struct _io_read_reply, data);
-		ret = Writemsg(pid, dataOffset, buffer, ret);
+	unsigned incr = file_.Read(buffer_, nbytes);
+
+	if(incr == -1) {
+		return file_.ErrorNo();
 	}
 
-	if(ret != -1)
+	struct _io_read_reply reply;
+	struct _mxfer_entry mx[2];
+
+	reply.status = EOK;
+	reply.nbytes = incr;
+	reply.zero = 0;
+
+	_setmx(mx + 0, &reply, sizeof(reply) - sizeof(reply.data));
+	_setmx(mx + 1, buffer_, incr);
+
+	if(Replymx(pid, 2, mx) != -1)
 	{
-		VFLog(5, "VFTarFileEntity::Read() read \"%.*s\"", ret, buffer);
+		*offset += incr;
 	}
 
-	return ret;
+	return -1;
 }
 

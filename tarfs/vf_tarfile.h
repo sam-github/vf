@@ -22,6 +22,9 @@
 // Copyright (c) 1999, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1999/08/09 15:17:56  sam
+// Ported framework modifications down.
+//
 // Revision 1.3  1999/04/28 03:27:28  sam
 // Stamped sources with the GPL.
 //
@@ -45,13 +48,13 @@ public:
 	VFTarFileEntity(const TarArchive::iterator& file);
 	~VFTarFileEntity();
 
-	int Write(pid_t pid, size_t nbytes, off_t offset);
-	int Read(pid_t pid, size_t nbytes, off_t offset);
+	int Write(pid_t pid, size_t nbytes, off_t* offset, const void* data, int len);
+	int Read(pid_t pid, size_t nbytes, off_t* offset);
 
 private:
 	TarArchive::iterator file_;
 
-	static char buffer[BUFSIZ];
+	static char buffer_[BUFSIZ];
 };
 
 #endif
