@@ -1,7 +1,7 @@
 # Makefile: build vf.lib and virtual filesystems
 # $Id$
 
-CXXFLAGS = -w3 -g -T1
+CXXFLAGS = -w3 -g -T1	# privity 1 to make kernel calls __get_fd,__init_fd
 OFLAGS = -O
 LDFLAGS = -M $(CXXFLAGS) -l vf.lib
 
@@ -26,7 +26,7 @@ $(OBJ): $(INC)
 
 # standard targets
 
-include $(DEP)
+-include $(DEP)
 
 $(DEP): $(SRC) $(INC)
 	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
@@ -43,6 +43,9 @@ export: all
 
 run: stop vf_test
 	vf_test -vv &
+
+debug: stop vf_test
+	wd vf_test -vvvv &
 
 stop:
 	-slay -f vf_test
@@ -70,6 +73,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.5  1998/04/05 17:35:52  sroberts
+# added debug target
+#
 # Revision 1.4  1998/03/19 07:48:07  sroberts
 # make makedeps run automatically when any file changed
 #
