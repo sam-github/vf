@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/09/26 23:00:33  sam
+// moved all private definitions from vf_wt.h to vf_wt.cc, so only the
+// public interface is now visible in vf_wt.h
+//
 // Revision 1.3  1999/09/26 22:50:27  sam
 // reorganized the templatization, checking in prior to last cleanup
 //
@@ -42,6 +46,137 @@
 #include "vf_log.h"
 
 #include "vf_pop.h"
+
+//
+// Message types and definitions, used for communication between the
+// work team and the team lead.
+//
+
+#define WTMSG_REQUEST	0x0001
+#define WTMSG_DATA		0x0002
+#define WTMSG_COMPLETE	0x0003
+
+template <class Request>
+struct wtmsg_request {
+	void Fill(int rid_, const Request& request_) {
+		type	= VF_WORKTEAM_MSG;
+		subtype	= WTMSG_REQUEST;
+		rid		= rid_;
+		request	= request_;
+	}
+
+	msg_t	type;
+	msg_t	subtype;
+
+	int		rid;
+
+	Request	request;
+};
+
+struct wtmsg_data {
+	void Fill(int rid_, int length_) {
+		type	= VF_WORKTEAM_MSG;
+		subtype	= WTMSG_DATA;
+		rid		= rid_;
+		length	= length_;
+	}
+
+	msg_t	type;
+	msg_t	subtype;
+
+	int		rid;
+
+	int		length;
+	int		data[1];
+};
+
+struct wtmsg_complete {
+	void Fill(int rid_, int cause_) {
+		type	= VF_WORKTEAM_MSG;
+		subtype	= WTMSG_COMPLETE;
+		rid		= rid_;
+		cause	= cause_;
+	}
+
+	msg_t	type;
+	msg_t	subtype;
+
+	int		rid;
+
+	int cause; // >= 0, exited; < 0, signaled
+};
+
+
+//
+// VFTeamLead: manages the work team, running as the lead thread.
+//
+
+template <class Request, class Task>
+class VFTeamLead
+{
+public:
+	static int Start(Task& task);
+
+private:
+	VFTeamLead(Task& task);
+
+	int		Run();
+	void	HandleDeath();
+	int		HandleRequest(pid_t pid, const wtmsg_request<Request>& req);
+
+	class Active
+	{
+	public:
+		Active(pid_t client, Task& task) :
+			client_(client), count_(0), task_(task) {}
+
+		int Count() { return count_; }
+		int	Start(int rid, const Request& request);
+		int Complete(const VFExitStatus& status);
+
+	private:
+		class Worker : public VFDataIfx
+		{
+		public:
+			Worker(int rid, pid_t client) :
+				rid_(rid), pid_(-1), client_(client) {}
+
+			// used by Active
+			int		Start(const Request& request, Task& task);
+			pid_t	Pid() const { return pid_; }
+			pid_t	Rid() const { return rid_; }
+			void	Complete(const VFExitStatus& status);
+
+			// used by Task
+			int	Data(const void* data, size_t length);
+
+		private:
+			void SendComplete(int cause);
+
+			int		rid_;
+			pid_t	pid_;
+			pid_t	client_;
+		};
+
+		pid_t	client_;
+		int		count_;
+		Task&	task_;
+		WCValVector< VFPointer<Worker> >	workers_;
+	};
+
+	Active	active_;
+
+	pid_t	client_;
+
+	static pid_t	sigproxy_;
+	static void		SigHandler(int signo);
+
+	friend class Active;
+};
+
+//
+// VFWorkTeam (implementation)
+//
 
 template <class Request, class Info, class Task>
 VFWorkTeam<Request,Info,Task>* VFWorkTeam<Request,Info,Task>::

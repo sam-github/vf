@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/09/26 23:00:33  sam
+// moved all private definitions from vf_wt.h to vf_wt.cc, so only the
+// public interface is now visible in vf_wt.h
+//
 // Revision 1.3  1999/09/26 22:50:27  sam
 // reorganized the templatization, checking in prior to last cleanup
 //
@@ -45,54 +49,11 @@
 #include "vf_ptr.h"
 
 //
-// ioread(): an inline helper for binary i/o from an iostream
+// VF_WORKTEAM_MSG:
+//	Mesages of this type should be passed to VFWorkTeam::Service().
 //
-// There's oddities and ambiguities in the definition of binary i/o
-// methods for iostreams, involving what happens when a request for
-// a chunk can only be partially satisfied. The stream considers this
-// a failure of sorts. This function maps all this to return types
-// that are similar to read(3). It should be no more or less efficient
-// than istream::read(void*,size_t). Reporting of some errors is put
-// off until the next time the stream is read.
-//
-// arguments:
-//		is		- a valid istream
-//		data	-
-// returns:
-//		the number of bytes read, or -1 and sets errno.
-//
-// errors:
-//		EIO		- the istream was bad
-//		EFAULT	- nbytes is > 0, but buf is NULL
-//		EINVAL	- the istream was failed
 
-inline int ioread(istream& is, void* data, int nbytes)
-{
-	if(nbytes && !data) { errno = EFAULT; return -1; }
-
-	if(is.bad()) { errno = EIO; return -1; }
-
-	// If the is in the fail state, any attempts to get() from the
-	// stream will fail until the fail state is reset, so don't bother.
-	if(is.fail()) { errno = EINVAL; return -1; }
-
-	char*	next = (char*) data;
-	while(nbytes-- > 0) {
-		char ch = is.get();
-		if(!is.good()) {
-			break;
-		}
-		*next++ = ch;
-	}
-
-	nbytes = next - (char*) data;
-
-	// If no bytes were read, return an error if one occurred, otherwise
-	// we'll see the bad state on the next call.
-	if(nbytes == 0 && is.bad()) { errno = EBADF; return -1; }
-
-	return nbytes; // If nbytes is 0, that's the traditional EOF notification.
-}
+#define VF_WORKTEAM_MSG     0xf101  // 0x0000 -> 0x0f00 are QSSL reserved
 
 //
 // VFCompleteIfx:
@@ -186,132 +147,54 @@ private:
 };
 
 //
-// VFTeamLead: manages the work team, running as the lead thread.
+// ioread(): an inline helper for binary i/o from an iostream
 //
+// There's oddities and ambiguities in the definition of binary i/o
+// methods for iostreams, involving what happens when a request for
+// a chunk can only be partially satisfied. The stream considers this
+// a failure of sorts. This function maps all this to return types
+// that are similar to read(3). It should be no more or less efficient
+// than istream::read(void*,size_t). Reporting of some errors is put
+// off until the next time the stream is read.
+//
+// arguments:
+//		is		- a valid istream
+//		data	-
+// returns:
+//		the number of bytes read, or -1 and sets errno.
+//
+// errors:
+//		EIO		- the istream was bad
+//		EFAULT	- nbytes is > 0, but buf is NULL
+//		EINVAL	- the istream was failed
 
-template <class Request, class Task>
-class VFTeamLead
+inline int ioread(istream& is, void* data, int nbytes)
 {
-public:
-	static int Start(Task& task);
+	if(nbytes && !data) { errno = EFAULT; return -1; }
 
-private:
-	VFTeamLead(Task& task);
+	if(is.bad()) { errno = EIO; return -1; }
 
-	int		Run();
-	void	HandleDeath();
-	int		HandleRequest(pid_t pid, const wtmsg_request<Request>& req);
+	// If the is in the fail state, any attempts to get() from the
+	// stream will fail until the fail state is reset, so don't bother.
+	if(is.fail()) { errno = EINVAL; return -1; }
 
-	class Active
-	{
-	public:
-		Active(pid_t client, Task& task) :
-			client_(client), count_(0), task_(task) {}
-
-		int Count() { return count_; }
-		int	Start(int rid, const Request& request);
-		int Complete(const VFExitStatus& status);
-
-	private:
-		class Worker : public VFDataIfx
-		{
-		public:
-			Worker(int rid, pid_t client) :
-				rid_(rid), pid_(-1), client_(client) {}
-
-			// used by Active
-			int		Start(const Request& request, Task& task);
-			pid_t	Pid() const { return pid_; }
-			pid_t	Rid() const { return rid_; }
-			void	Complete(const VFExitStatus& status);
-
-			// used by Task
-			int	Data(const void* data, size_t length);
-
-		private:
-			void SendComplete(int cause);
-
-			int		rid_;
-			pid_t	pid_;
-			pid_t	client_;
-		};
-
-		pid_t	client_;
-		int		count_;
-		Task&	task_;
-		WCValVector< VFPointer<Worker> >	workers_;
-	};
-
-	Active	active_;
-
-	pid_t	client_;
-
-	static pid_t	sigproxy_;
-	static void		SigHandler(int signo);
-
-	friend class Active;
-};
-
-//
-// Message types and definitions
-//
-
-#define	VF_WORKTEAM_MSG		0xf101	// 0x0000 -> 0x0f00 are QSSL reserved
-
-#define WTMSG_REQUEST	0x0001
-#define WTMSG_DATA		0x0002
-#define WTMSG_COMPLETE	0x0003
-
-
-template <class Request>
-struct wtmsg_request {
-	void Fill(int rid_, const Request& request_) {
-		type	= VF_WORKTEAM_MSG;
-		subtype	= WTMSG_REQUEST;
-		rid		= rid_;
-		request	= request_;
+	char*	next = (char*) data;
+	while(nbytes-- > 0) {
+		char ch = is.get();
+		if(!is.good()) {
+			break;
+		}
+		*next++ = ch;
 	}
 
-	msg_t	type;
-	msg_t	subtype;
+	nbytes = next - (char*) data;
 
-	int		rid;
+	// If no bytes were read, return an error if one occurred, otherwise
+	// we'll see the bad state on the next call.
+	if(nbytes == 0 && is.bad()) { errno = EBADF; return -1; }
 
-	Request	request;
-};
-
-struct wtmsg_data {
-	void Fill(int rid_, int length_) {
-		type	= VF_WORKTEAM_MSG;
-		subtype	= WTMSG_DATA;
-		rid		= rid_;
-		length	= length_;
-	}
-
-	msg_t	type;
-	msg_t	subtype;
-
-	int		rid;
-
-	int		length;
-	int		data[1];
-};
-
-struct wtmsg_complete {
-	void Fill(int rid_, int cause_) {
-		type	= VF_WORKTEAM_MSG;
-		subtype	= WTMSG_COMPLETE;
-		rid		= rid_;
-		cause	= cause_;
-	}
-
-	msg_t	type;
-	msg_t	subtype;
-
-	int		rid;
-
-	int cause; // >= 0, exited; < 0, signaled
-};
+	return nbytes; // If nbytes is 0, that's the traditional EOF notification.
+}
 
 
 #endif
