@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/07/21 16:00:17  sam
+// the symlink extension wasn't working, commented it out
+//
 // Revision 1.2  1999/07/19 15:23:20  sam
 // can make aribtrary info show up in the link target, now just need to get
 // that info...
@@ -48,6 +51,7 @@ public:
 	PopFile(int msg, PopDir& dir, int size);
 	~PopFile();
 
+	int Stat(const String* path, _io_open* req, _io_fstat_reply* reply);
 	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
 
 	int Write(pid_t pid, size_t nbytes, off_t offset);

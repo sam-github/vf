@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.6  1999/07/21 16:00:17  sam
+// the symlink extension wasn't working, commented it out
+//
 // Revision 1.5  1999/07/19 15:23:20  sam
 // can make aribtrary info show up in the link target, now just need to get
 // that info...
@@ -74,7 +77,7 @@ PopFail(const char* cmd, pop3& pop)
 PopFile::PopFile(int msg, PopDir& pop, int size) :
 	dir_(pop), msg_(msg), data_(0), description_(0)
 {
-	InitStat(S_IRUSR, S_IFLNK);
+	InitStat(S_IRUSR, S_IFREG);
 	stat_.st_size = size_ = size;
 
 	ostrstream os;
@@ -86,6 +89,24 @@ PopFile::~PopFile()
 {
 	delete data_;
 	delete description_;
+}
+
+int PopFile::Stat(const String* path, _io_open* req, _io_fstat_reply* reply)
+{
+    VFLog(2, "PopFile::Stat(\"%s\") mode %#x", (const char*) path, req->mode);
+
+	reply->status	= EOK;
+	reply->zero		= 0;
+	reply->stat		= stat_;
+
+	/* if it's an lstat(), claim we're a link */
+	/* not working yet
+	if(req->mode == S_IFLNK) {
+		reply->stat.st_mode = (reply->stat.st_mode & ~S_IFMT) | S_IFREG;
+	}
+	*/
+
+	return sizeof(*reply);
 }
 
 int PopFile::ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply)
