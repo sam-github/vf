@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/04/05 23:50:42  sroberts
+// added mkdir()
+//
 // Revision 1.2  1998/03/19 07:41:25  sroberts
 // implimented dir stat, open, opendir, readdir, rewinddir, close
 //
@@ -125,7 +128,7 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 		break;
 
 	case _IO_CHDIR:
-		size = root_->Chdir(msg->open.path, &msg->open, &msg->open_reply);
+		size = root_->ChDir(msg->open.path, &msg->open, &msg->open_reply);
 		break;
 
 	case _IO_HANDLE:
@@ -186,6 +189,10 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 		size = sizeof(msg->close_reply);
 
 		} break;
+
+	case _FSYS_MKSPECIAL:
+		size = root_->MkDir(msg->mkdir.path, &msg->mkdir, &msg->mkdir_reply);
+		break;
 
 //	case _IO_READ: break;
 //	case _IO_WRITE: break;
