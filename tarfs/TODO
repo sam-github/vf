@@ -1,17 +1,18 @@
-
 * Implement heuristics for eliding the top directory.
 	- DONE
 
 * Implement heuristics for adjusting locations of symbolic links.
 
 * By presenting uid/gid as in the tar file we create security hole...
-  what if somebody tars up /bin/sh and modifies the tar file to say
-  its suid/sgid?
-   fix 1) don't allow execution (I currently don't, but could make it
-    an option).
-   fix 2) present all files as owned by the caller...
+	what if somebody tars up /bin/sh and modifies the tar file to say
+	its suid/sgid?
 
-   I guess the second is the only secure way... though I like the
-   ability to present the files in the archive with "correct"
-   ownership and permissions.
+	fix 1) don't allow execution (I currently don't, but could make it
+		an option).
+	fix 2) present all files as owned by the caller..
 
+	I guess the second is the only secure way... though I like the
+	ability to present the files in the archive with "correct"
+	ownership and permissions.
+
+	x DONE - I've made all files appear to be owned by the owner.

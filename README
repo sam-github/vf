@@ -1,17 +1,15 @@
-This is a collection of QNX4 virtual filesystems, and of a framework
+This is a collection of QNX4 virtual filesystems, and a framework
 to implement them. It's a hobby and experiment of mine, and I'd be
 interested in any comments or feedback.
 
-See the note in vf.txt, or vf.html.
+See the notes in vf.txt, or vf.html.
 
-To build, type make in the "vf" directory. This will make
-vf.lib and vf_ram.
+To build, do a 'make build'. Each sub-directory contains one of the vfs'.
 
-The cd into "tarfs" and type make. This will make vf_tar
-and tart (the tar archive class tester).
+To install, do a 'make install'.
 
 If this doesn't work for you, the makefiles are quite simple,
-and please e-mail me about any problems you have:
+and please e-mail me about any problems you have!
 
-  sam@cogent.ca
+  sroberts@uniserve.com
 

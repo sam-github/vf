@@ -1,12 +1,24 @@
 =head1 A C++ Framework for QNX Virtual Filesystems
 
-=head2 Introduction
+=head2 Code
 
-In the process of writing QNX resource managers it becomes
+The latest source for the virtual filesystems can be downloaded
+from my home page, here (I<http://www.emyr.net/Sam>). You'll
+also need socket++ to compile the pop3 filesystem, also available
+from my home page.
+
+This code is distributed under the GNU General Public Licence. I was going
+to distribute it under the library licence, but I can't find a copy on my
+machine. If the GPL's a problem for anybody, contact me, I could put it
+under the library licence.
+
+=head2 Comments
+
+In the process of writing QNX4 resource managers it becomes
 clear that a substantial amount of the code, especially for
 virtual filesystems, is very generic and reusable. This
 has been recognized by QSSL, and their newest version
-of QNX, renamed Neutrino, has incorporated a shared library to
+of QNX4, Neutrino, has incorporated a common framework to
 handle this generic functionality. This is supposed to
 substantially reduce the cut-and-paste coding in writing
 a resource manager, as well as contribute to Neutrinos
@@ -27,35 +39,30 @@ case.
 I've only recently discovered that QSSL has
 published a much better example of writing a virtual filesystem than
 they used to have, and that the example comes in the form
-of a framework, see iomanager2 (I<ftp://ftp.qnx.com/usr/free/qnx4/os/samples/misc/iomanager2.tgz>).
+of a framework, see iomanager2
+(I<ftp://ftp.qnx.com/usr/free/qnx4/os/samples/misc/iomanager2.tgz>).
 My framework is surprisingly similar, but does some things
 theirs doesn't. I've read theirs and merged some of the
 useful ideas into mine.
 
 As a next step I decided to tackle a Tar filesystem,
-a resoure manager that would give a (read-only)
+a resource manager that would give a (read-only)
 filesystem-like interface to a tar file, one that you can
 cd into, then view a file with less or vi, etc. This is now
-done, and I'm currently working on getting support for
-compressed tar files.
+done, and I've also implemented support for compressed tar files,
+and integration into the mount command (so you can do a 'mount -t tgz
+hello-1.2.tgz /src/hello').
 
 My next goal was going to be an ftp filesystem, based on the ftp
-support that already exists in the socket++ (I<http://toronto.qenesis.com/Sam/socket++.html>)
+support that already exists in the socket++
+(I<http://www.emyr.net/Sam/socket++.html>)
 library. However, that requires changes to the ftp support in
 socket++ to make it more useable, so I implemented a pop3 filesystem
 instead.  It presents a pop3 e-mail account as a virtual filesystem,
 allowing you to read your pop3 mail with your favorite text
-editor. Compilation requires my version of socket++1.10 since
-it uses a pop3 protocol class I implemented using the socket++
-framework.
+editor.
 
-Before I go back to the ftp filesystem I want a multi-threaded
-pop mail download so io messages that can be satisfied
-without blocking don't have to wait for the current download to
-complete. This is now done. I also want multi-threaded reads
-of gzip and freeze compressed tar files.
-
-=head2 The caveats...
+=head2 Caveats
 
 This is my code, I wrote it for free, I did it because
 I thought it was pretty interesting, and you can use it freely
@@ -63,7 +70,7 @@ I thought it was pretty interesting, and you can use it freely
 production code. It works well enough to play with, and if you
 find it useful I'd be very pleased. If anybody has any
 comments, questions, encounters any problems, etc., please
-feel free to contact me (I<mailto:sam@cogent.ca>), I'd like to
+feel free to contact me (I<mailto:sroberts@uniserve.com>), I'd like to
 help.
 
 Here's some of the problems that I'm aware of:
@@ -80,8 +87,8 @@ about it.
 
 The framework makes I<absolutely no> attempt
 to do the uid/gid permissions checking that any production 
-manager should. It'll be easy to do, I just haven't yet since I haven't
-needed to.
+manager should. It'll be easy to do, I just haven't got around to it yet
+since I haven't needed to.
 
 =item *
 
@@ -101,8 +108,9 @@ symbolic links. See the usage message for vf_tar for details.
 =item *
 
 While I tried to respond to messages as efficiently as possible, in other
-areas I don't try to be efficient at all. I use the Watcom String
-class for a few things, and the RAM filesystem uses malloc() and realloc()
+areas I don't try to be efficient at all. I use a pretty unoptimized
+string class for a few things, and the RAM filesystem uses malloc() and
+realloc()
 pretty freely to allocate space for new files. I traded off speed for
 flexibility when necessary.
 
@@ -123,60 +131,13 @@ kind of public outcry, I'm not holding by breath...
 
 =back
 
-=head2 ...and the code
-
-You can grab just the binaries if you want, or else get the whole
-package and compile it yourself. Be warned that resource managers
-have to run as root or setuid root.
-
-=over 4
-
-=item *
-
-You'll need socket++ (I<http://toronto.qenesis.com/Sam/socket++-1.10.1.tgz>) to
-compile the pop3 filesystem.
-
-=item *
-
-Source for all the virtual filesystems (I<http://toronto.qenesis.com/Sam/vf-1.0.tgz>)
-
-=item *
-
-Binaries: Remember, these I<must> be run as root (or set-uid root) so you
-may wish to download and look over the source yourself.
-
-=over 8
-
-=item *
-
-vf_ram (I<http://toronto.qenesis.com/Sam/vf_ram.gz>) and
-its
-usage (I<http://toronto.qenesis.com/Sam/vf_ram.usage>)
-
-=item *
-
-vf_tar (I<http://toronto.qenesis.com/Sam/vf_tar.gz>)
-
-=item *
-
-vf_pop (I<http://toronto.qenesis.com/Sam/vf_pop.gz>)
-
-=back
-
-=back
-
-This code is distributed under the GNU General Public Licence. I was going
-to distribute it under the library licence, but I can't find a copy on my
-machine. If the GPL's a problem for anybody, contact me, I could put it
-under the library licence.
-
-=head1 Some background and some links
+=head2 Background
 
 For the last few years I've worked primarily with
 QNX4 (I<http://www.qnx.com>). One of the most
 interesting things about QNX is the ability to write
 a resource manager capable of taking over a prefix in
-the pathname space (such as "/dev") and responding
+the pathname space (such as F</dev>) and responding
 to the file oriented Unix system calls, such as
 open(), read(), write(), readdir(), stat(), chdir(),
 etc. In QNX, all API's that operate on a path, or
@@ -184,11 +145,11 @@ on the file descriptor returned by opening a path, are
 implemented using resource managers. Mostly these
 resource managers are used to implement mountable file systems,
 or fairly generic Unix block and character-oriented
-device drivers in "/dev/". Exceptions are the message
+device drivers in F</dev/>. Exceptions are the message
 queue server, which offers the POSIX.4 "mq_*" API as well
 as a filesystem interface, and the QNX print spoolers,
 which offer a filesystem interface under the (virtual)
-"/dev/spool" directory as well as the more traditional "lp*"
+F</dev/spool> directory as well as the more traditional "lp*"
 commands.
 
 An interesting possibility is to write resource managers
@@ -207,7 +168,7 @@ Another, less playful, example is the networking
 API in the RoadRunner (I<http://www.cornfed.com/roadrunner>)
 operating system. In this OS, opening a tcp connection
 is accomplished by doing an open on a path such as
-"/net/tcp/192.168.3.9/80", which would open a connection to
+F</net/tcp/192.168.3.9/80>, which would open a connection to
 port 80 on the specified server. I can't link directly to the
 pertinent page, so follow Documentation>>html>>Tcp File System.
 
@@ -237,8 +198,4 @@ implement resource managers for things such as a virtual
 filesystem for easy access to ftp servers. I'm still waiting
 for the promised Debian GNU/HURD to see how well it works, but
 I'm getting impatient...
-
-=head1 The footer.
-
-Back to the top (I<http://toronto.qenesis.com/Sam/index.html>).
 

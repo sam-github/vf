@@ -6,7 +6,7 @@ and non-blocking generated a long list of possible changes, add them here.
    to 'dir/file' will work when in same directory as sl, not otherwise.
 
 * Integrate with mount utility
- x now there is a mount_[ram/tar/pop].
+ x now there is a mount_[ram/tar/tgz/pop].
 
 * Testing/Benchmarking
  - Could use an app that does weird things to test the framework.
@@ -43,7 +43,7 @@ and non-blocking generated a long list of possible changes, add them here.
    No, not yet...
 
 * Implement more interfaces:
- x umount() - now does the same as 'rmdir'.
+ x umount() - now causes manager to exit
  - unlink() (will need a link count in entities to support this)
  - execution (Proc uses special messages...)
  - utime()
