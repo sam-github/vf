@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.7  1999/06/18 17:03:36  sam
+// implemented new entity factory for tar
+//
 // Revision 1.6  1999/04/30 02:39:38  sam
 // more info in usage message
 //
@@ -77,13 +80,35 @@ current behaviour is:
     symbolic link is left as it is.
 
 In the second case, the archive could be searched for a member matching the
-target path, and if present the symbolic link could be adjust to refer to
+target path, and if present the symbolic link could be adjusted to refer to
 that member.
 
 I've also considered dealing with the common case of archived sub-directories,
 such as "yoyo-widgets-1.3.4/..." by stripping the common leading path element,
 and naming the virtual filesystem path after that leading element.
 #endif
+
+//
+// VFTarEntityFactory
+//
+
+class VFTarEntityFactory : public VFEntityFactory
+{
+public:
+	VFEntity* NewDir()
+	{
+		VFEntity* entity = new VFDirEntity(0555, -1, -1, this);
+
+		if(!entity) {
+			errno = ENOMEM;
+		}
+		return entity;
+	}
+};
+
+//
+// vf_tar: globals
+//
 
 int		vOpt	= 0;
 char*	pathOpt	= 0;
@@ -195,7 +220,14 @@ void main(int argc, char* argv[])
 		exit(1);
 	}
 
-	VFDirEntity* root = new VFDirEntity(0555, -1, -1, new VFDirFactory);
+	VFDirEntity* root = new VFDirEntity(0555, -1, -1, new VFTarEntityFactory);
+
+	// This loop is slow but robust. Basically, we'll create intermediary
+	// directories to entities with default attributes if necessary, but
+	// we'd rather find that directories actual tar record, which will have
+	// the correct attributes. Thus loop through the archive, first
+	// inserting all top-level entities, then second-level, etc. The first
+	// loop through we'll record the maximum depth so we don't go forever.
 
 	int maxDepth = 1;
 	for(int d = 1; d <= maxDepth; ++d) {
