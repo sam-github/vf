@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.3  2000/01/13 02:29:48  sam
+// tweaked and comment tar interfaces, and handle eof on tar files better
+//
 // Revision 1.2  1999/11/25 04:22:02  sam
 // *** empty log message ***
 //
@@ -152,14 +155,22 @@ int main(int argc, char* argv[])
 
 		switch(cOpt)
 		{
-	/*
 		case 's': {
 			printf("untar: it path %s size %d user %s group %s link %s\n",
-				tar.Path(), stat.st_size, it.User(), it.Group(), it.Link());
+				tar.Path(),
+				stat.st_size,
+				tar.Record()->UName(),
+				tar.Record()->GName(),
+				tar.LinkTo()
+				);
 			printf("untar: it mode %#x perm %#o uid %d gid %d\n",
-				stat->st_mode, 0777&stat->st_mode, stat->st_uid, stat->st_gid);
+				stat.st_mode,
+				0777 & stat.st_mode,
+				stat.st_uid,
+				stat.st_gid
+				);
 		  }	break;
-	*/
+
 		case 'l': {
 		 	int type;
 		 	if(S_ISREG(stat.st_mode)) {

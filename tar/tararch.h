@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.4  2000/01/13 02:29:48  sam
+// tweaked and comment tar interfaces, and handle eof on tar files better
+//
 // Revision 1.3  1999/12/05 01:52:58  sam
 // Implmented Member::Seek(), and Stat().
 //
@@ -88,7 +91,12 @@ struct Tar
 		// QNX doesn't have the spaces... but GNU does
 
 	union Record {
+	private:
+		int Int(const char* str) const {	// assume octal, hope this is right!
+			return strtol(str, 0, 8);
+		} 
 		char		charptr[RECORDSIZE];
+	public:
 		struct /*header*/ {
 			char	name[NAMSIZ];
 			char	mode[8];	/* octal */
@@ -110,9 +118,9 @@ struct Tar
 			char	ctime[12];
 		} header;
 
-		int Int(const char* str) const {	// assume octal, hope this is right!
-			return strtol(str, 0, 8);
-		} 
+		const char* UName() const { return header.uname; }
+		const char* GName() const { return header.gname; }
+
 		int Stat(struct stat* stat) const
 		{
 			if(!stat) { return 0; }
@@ -219,7 +227,6 @@ struct Tar
 		{
 			return offset_;
 		}
-
 		int Open(streambuf* sb)
 		{
 			sb_ = sb;
@@ -251,7 +258,11 @@ struct Tar
 
 			return ret;
 		}
-
+/*
+		int Next(const char* path)
+		{
+		}
+*/
 		int Next()
 		{
 			// Seek to the begining-of-file past the iterator's file position.
@@ -265,7 +276,11 @@ struct Tar
 			do {
 				int err = Read(seek_, &rec_, sizeof(rec_));
 				// Check for error and EOF.
-				if(err < sizeof(rec_)) { valid_ = 0; return 0; }
+				if(err < sizeof(rec_)) {
+					valid_ = 0;
+					Err("Next", ENOENT);
+					return 0;
+				}
 
 				bof++; // Read a block
 
@@ -288,10 +303,12 @@ struct Tar
 
 			return 1;
 		}
+		// should return 0 if current record invalid
 		const Tar::Record* Record() const
 		{
 			return &rec_;
 		}
+		// should be a member of Record()
 		const char* Path()
 		{
 			if(!valid_) {
@@ -300,6 +317,7 @@ struct Tar
 			}
 			return rec_.header.name;
 		}
+		// should be a member of Record()
 		const char* LinkTo()
 		{
 			if(!valid_) {
@@ -316,6 +334,7 @@ struct Tar
 		* Returns a handle to the current member, the caller is
 		* responsible for deallocating the handle when complete.
 		*/
+		// shouldn't be a member
 		Tar::Member* Member(Tar::Member* from = 0)
 		{
 			from = from;
@@ -467,6 +486,8 @@ struct Tar
 		// ~Member();
 	};
 
+	// shouldn't be derived, should contain a reference-counted
+	// Tar::Archive
 	class Reader : public Tar::Archive
 	{
 	public:
