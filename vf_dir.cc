@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.15  1999/07/02 15:29:06  sam
+// assert more things that must be true
+//
 // Revision 1.14  1999/06/21 10:28:20  sam
 // fixed bug causing random return status of unsupported functions
 //
@@ -311,6 +314,7 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 
 	assert(path != "");
 	assert(entity);
+	assert(path[0] != '/');
 
 	String lead;
 	String tail;
@@ -409,6 +413,8 @@ unsigned VFDirEntity::Hash(const String& key)
 {
 	const char* s = key;
 
+	assert(s);
+
 	return EntityMap::bitHash(s, strlen(s));
 }
 
@@ -490,7 +496,7 @@ int VFDirOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 	reply->zero[3] = 0;
 	reply->zero[4] = 0;
 
-	if(readIndex_ == entries)
+	if(readIndex_ >= entries)
 	{
 		reply->ndirs  = 0;
 		return sizeof(*reply);
