@@ -1,7 +1,6 @@
 //
 // tar_arch.h: 
 //
-//
 // Copyright (C) 1999 Sam Roberts
 //
 //  This program is free software; you can redistribute it and/or modify
@@ -22,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.5  1999/07/19 15:18:48  sam
+// now reads GNU archives
+//
 // Revision 1.4  1999/04/28 03:27:28  sam
 // Stamped sources with the GPL.
 //
@@ -67,20 +69,7 @@
 
 /* The magic field is filled with this if uname and gname are valid. */
 //#define TMAGIC		"ustar  "	/* 7 chars and a null */
-#define TMAGIC		"ustar"		/* QNX doesn't have the spaces... */
-
-/* The linkflag defines the type of file */
-#define	LF_OLDNORMAL	'\0'		/* Normal disk file, Unix compat */
-#define	LF_NORMAL	'0'		/* Normal disk file */
-#define	LF_LINK		'1'		/* Link to previously dumped file */
-#define	LF_SYMLINK	'2'		/* Symbolic link */
-#define	LF_CHR		'3'		/* Character special file */
-#define	LF_BLK		'4'		/* Block special file */
-#define	LF_DIR		'5'		/* Directory */
-#define	LF_FIFO		'6'		/* FIFO special file */
-#define	LF_CONTIG	'7'		/* Contiguous file */
-/* Further link types may be defined later. */
-
+#define TMAGIC		"ustar"		/* QNX doesn't have the spaces... but GNU does */
 
 struct sparse {
 	char offset[12];
@@ -129,7 +118,9 @@ union TarRecord {
 		char isextended;
 	} ext_hdr;
 
-	int Int(const char* str) { return strtol(str, 0, 0); }
+	int Int(const char* str) {	// assume octal, hope this is right!
+		return strtol(str, 0, 8);
+	} 
 
 	int Stat(struct stat* stat)
 	{
@@ -146,7 +137,7 @@ union TarRecord {
 		stat->st_mtime	= Int(mtime);
 		stat->st_atime	= Int(atime);
 		stat->st_ctime	= Int(ctime);
-		stat->st_mode	= (mode_t) Int(mode);
+		stat->st_mode	= 0777 & (mode_t) Int(mode);
 		stat->st_nlink	= 0;
 		stat->st_status	= 0;
 
@@ -471,7 +462,7 @@ private:
 			bof++; // Read a block
 
 			// Check for valid header.
-			if(strcmp(TMAGIC, rec.magic) == 0) {
+			if(strncmp(TMAGIC, rec.magic, strlen(TMAGIC)) == 0) {
 				it->valid_	= 1;
 				it->offset_	= bof - 1;
 				it->span_	= 1;
