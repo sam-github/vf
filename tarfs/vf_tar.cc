@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/07/19 15:14:02  sam
+// small changes and bugfixes
+//
 // Revision 1.11  1999/07/02 15:26:28  sam
 // simple bug causing segvs for tar members with absolute ("/...") paths fixed
 //
@@ -115,6 +118,8 @@ that leading element.
 class VFTarEntityFactory : public VFEntityFactory
 {
 public:
+	VFTarEntityFactory(int uOpt) : uOpt_(uOpt) {}
+
 	VFEntity* AutoCreateDirectory()
 	{
 		VFEntity* entity = new VFDirEntity(0555, -1, -1, this);
@@ -124,7 +129,47 @@ public:
 		}
 		return entity;
 	}
+
+	VFEntity* Create(TarArchive::iterator& it)
+	{
+		// attmempt to find the local user by name
+		if(uOpt_) {
+			struct passwd* pw = getpwnam(it.User());
+			struct group* gr = getgrnam(it.Group());
+
+			it.ChUidGid(pw ? pw->pw_uid : -1, gr ? gr->gr_gid : -1);
+		}
+
+		VFEntity* entity = 0;
+		struct stat* stat = it.Stat();
+
+		if(S_ISREG(stat->st_mode)) {
+			entity = new VFTarFileEntity(it);
+		}
+		else if(S_ISDIR(stat->st_mode)) {
+			entity = new VFDirEntity(
+							stat->st_mode, stat->st_uid, stat->st_gid, this);
+		}
+		else if(S_ISLNK(stat->st_mode)) {
+			entity = new VFSymLinkEntity(
+				it.Link(), stat->st_uid, stat->st_gid);
+		}
+		else {
+			VFLog(1, "unsupported tar file type");
+			return 0;
+		}
+
+		if(!entity) {
+			VFLog(0, "%s", strerror(errno));
+			exit(1);
+		}
+		return entity;
+	}
+
+private:
+	int uOpt_;
 };
+
 
 //
 // vf_tar: globals
@@ -142,45 +187,12 @@ int Depth(const char* p)
 	int depth = 1;
 
 	while((p = strchr(p, '/'))) {
-		++p; // because p now points at a '/'
-		++depth;
+		++p; // because p now points at the '/'
+		if(*p) {
+			++depth; // don't count a trailing '/' in the depth
+		}
 	}
 	return depth;
-}
-
-VFEntity* VFTarEntityCreate(TarArchive::iterator& it)
-{
-	// attmempt to find the local user by name
-	if(uOpt) {
-		struct passwd* pw = getpwnam(it.User());
-		struct group* gr = getgrnam(it.Group());
-
-		it.ChUidGid(pw ? pw->pw_uid : -1, gr ? gr->gr_gid : -1);
-	}
-
-	VFEntity* entity = 0;
-	struct stat* stat = it.Stat();
-
-	if(S_ISREG(stat->st_mode)) {
-		entity = new VFTarFileEntity(it);
-	}
-	else if(S_ISDIR(stat->st_mode)) {
-		entity = new VFDirEntity(stat->st_mode, stat->st_uid, stat->st_gid);
-	}
-	else if(S_ISLNK(stat->st_mode)) {
-		entity = new VFSymLinkEntity(
-			it.Link(), stat->st_uid, stat->st_gid);
-	}
-	else {
-		VFLog(1, "unsupported tar file type");
-		return 0;
-	}
-
-	if(!entity) {
-		VFLog(0, "%s", strerror(errno));
-		exit(1);
-	}
-	return entity;
 }
 
 int GetOpts(int argc, char* argv[])
@@ -242,7 +254,8 @@ void main(int argc, char* argv[])
 		exit(1);
 	}
 
-	VFDirEntity* root = new VFDirEntity(0555, -1, -1, new VFTarEntityFactory);
+	VFTarEntityFactory* factory = new VFTarEntityFactory(uOpt);
+	VFDirEntity* root = new VFDirEntity(0555, -1, -1, factory);
 
 	// This loop is slow but robust. Basically, we'll create intermediary
 	// directories to entities with default attributes if necessary, but
@@ -267,7 +280,7 @@ void main(int argc, char* argv[])
 			if(d == depth) {
 				if(vOpt >= 4) { it.DebugFile(stdout); }
 
-				VFEntity* entity = VFTarEntityCreate(it);
+				VFEntity* entity = factory->Create(it);
 
 				if(entity && !root->Insert(p, entity)) {
 					VFLog(0, "inserting %s failed: [%d] %s",
@@ -292,7 +305,7 @@ void main(int argc, char* argv[])
 		if(!pathOpt)
 		{
 			ostrstream s;
-			s << pair->name;
+			s << pair->name << '\0';
 			pathOpt = s.str();
 		}
 	}
