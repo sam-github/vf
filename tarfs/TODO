@@ -12,9 +12,6 @@
    fix 2) present all files as owned by the caller...
 
    I guess the second is the only secure way... though I like the
-   first better.
-
-* call "zcat archive.tar.gz | tar -xf - file" to retrieve files, and
-  store them in a temporary... then I'll be able to read tgz archives,
-  though not as quickly as .tar ones.
+   ability to present the files in the archive with "correct"
+   ownership and permissions.
 
