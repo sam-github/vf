@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/04/05 23:53:13  sroberts
+// added mkdir() support, so don't create my own directories any more
+//
 // Revision 1.2  1998/03/19 07:41:25  sroberts
 // implimented dir stat, open, opendir, readdir, rewinddir, close
 //
@@ -66,7 +69,9 @@ int main(int argc, char* argv[])
 {
 	GetOpts(argc, argv);
 
-	VFDirEntity* dir = new VFDirEntity;
+	VFDirFactory* factory = new VFDirFactory;
+
+	VFEntity* dir = factory->NewDir();
 
 	if(!vfmgr->Init(dir, pathOpt, vOpt))
 	{
@@ -75,17 +80,6 @@ int main(int argc, char* argv[])
 			);
 		exit(1);
 	}
-
-	VFEntity* entity;
-	int ok;
-
-	entity = new VFDirEntity;
-	ok = dir->Insert("sub", entity);
-	assert(ok);
-
-	entity = new VFDirEntity;
-	ok = dir->Insert("sub/sub1/sub2", entity);
-	assert(ok);
 
 	vfmgr->Run();
 
@@ -109,3 +103,4 @@ int main(int argc, char* argv[])
 	strcpy(msg->open.path, "sub/sub");
 	vfmgr->Handle(pid, msg);
 */
+
