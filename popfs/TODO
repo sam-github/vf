@@ -1,11 +1,21 @@
 
-* use top to get from/subject, and respond to realink with this info?
+* use top to get from/subject, and respond to readlink with this info?
+
+* permissions checks are important here, but still missing from framework
+
+* vf_pop can't getpass() if you start it in background, so detect that,
+  and have it become a daemon by default (unless -d specified) but only
+  after collecting a valid password.
+
+* implement rm() - this is hard because POP3 doesn't allow messages
+  be uniquely identified... and when you delete one the number identifying
+  all the others changes (in an implementation dependent way)
+
+* see if I can do cool things with relay to make reads go directly to Fsys...
+
+* implement QUIT when root of vfsys is rmdired.
+ -> DONE (actually, don't need since we now QUIT after every transaction)
 
 * cache in fstream, not strstream!
-
-* implement rm()
-
-* implement quit on rmdir() of root.
-
-* permissions checks
+ -> DONE
 
