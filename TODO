@@ -2,20 +2,22 @@
 reference counting stuff in it, leaving the Ocb pure abstract. this makes
 sense, since the ocb doesn't need this info.
 
-* support hard links? either way I need a link count in entities to support
-the Unixy removing of an entity leaving any open fds to that entity valid
-till they're closed
+* Support hard links? either way I need a link count in entities to support
+removing of an entity with open fds to that entity.
 
-* The methods are returning 0 for "unsupported by this ocb", which will
-trigger an assert, I think... I think I need to provide defaults for the
+* Some methods are returning 0 for "unsupported by this ocb", which will
+trigger an assert, I think I need to provide defaults for the
 dir/file specific methods (but not for generic ones like fstat()) that
 correctly return ENOTDIR, or whatever is appropriate.
 
-* QNX Fsys directories support read... and maybe write? Should I?
+* QNX Fsys directories support read and write. Should I? Why?
 
-* write an app that tests the file system...
+* Write an app that tests the file system...
 
-* make request pointers to Ocb functions "const" and reorganize ocb functios
+* Make request pointers to Ocb functions "const" and reorganize ocb functios
 into generic/file specific/dir specific.
 
-* does open honor O_EXCL if O_CREAT is requested?
+* Does open honor O_EXCL if O_CREAT is requested?
+
+* How extensible is it? Implement VFsys_tar.
+
