@@ -1,20 +1,22 @@
-# Makefile: build vf.lib and virtual filesystems
+# Makefile: build vf.lib and virtual ram filesystem
+#
 # $Id$
 
-CXXFLAGS = -w3 -g -T1	# privity 1 to make kernel calls __get_fd,__init_fd
+CXXFLAGS = -w2 -g -T1	# privity 1 to make kernel calls __get_fd,__init_fd
 OFLAGS = -O
 LDFLAGS = -M $(CXXFLAGS) -l vf.lib
 
-INC = vf.h vf_mgr.h vf_dir.h vf_file.h
+INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
-OBJ = vf_mgr.o vf_dir.o vf_file.o vf_log.o vf.o
-EXE = vf_test
+OBJ = vf_mgr.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
+EXE = vf_ram
 LIB = vf.lib
-ALL = depends.mak $(LIB) $(EXE)
 DEP = depends.mak
+ALL = $(LIB) $(EXE) deps
 
-# default target
+# default targets
 all: $(ALL)
+deps: $(DEP)
 
 # special targets
 $(LIB): $(OBJ)
@@ -41,17 +43,17 @@ export: all
 
 # development targets
 
-run: stop vf_test
-	vf_test -vv &
+run: stop vf_ram
+	vf_ram -vv &
 
-noisy: stop vf_test
-	vf_test -vvvv &
+noisy: stop vf_ram
+	vf_ram -vvvvv &
 
-debug: stop vf_test
-	wd vf_test -vvvv &
+debug: stop vf_ram
+	wd vf_ram -vvvv &
 
 stop:
-	-slay -f vf_test || true
+	-slay -f vf_ram || true
 
 # rule forcing run of usemsg after linking
 %: %.o
@@ -75,7 +77,18 @@ stop:
 	chown root $@
 	chmod u+s $@
 
+# release targets
+release:
+	cd ..; pax -w -f ../www/vf.tar < vf/Manifest
+	cp vf_ram tarfs/vf_tar ../../www/
+	wstrip ../../www/vf_ram
+	wstrip ../../www/vf_tar
+	gzip ../../www/vf_* ../../www/*.tar
+
 # $Log$
+# Revision 1.9  1999/06/14 14:27:30  sam
+# changed vf_test to vf_ram, and added release target
+#
 # Revision 1.8  1998/04/28 07:26:43  sroberts
 # changed log target to noisy target
 #
