@@ -1,12 +1,13 @@
 * Testing/Benchmarking
  - Could use an app that does weird things to test the framework.
- - Timing tests against QNX's Ram filesystem would be interesting.
+ - Timing tests against QNX's RAM filesystem would be interesting.
  - Make RAM filesystem (optionally?) do double/quarter memory allocation.
 
 * POSIX correctness:
  - does open honor O_EXCL if O_CREAT is requested?
  - totally missing any permissions checks on anything...
  - rdonly directory attribute respected on file creation/deletion?
+ - what happens when a read/write bigger than VFIoMsg can accept occurs?
 
 * Permissions checking:
  - Need to do.
@@ -14,13 +15,14 @@
    (such as pid and psinfo3).
  - The client info object may be a good place to put permissions checks.
 
-* Implement a safe way of mapping qnx_fd_attach() 24-bit handles to 32-bit
-  pointers. Look at the second iomanager implementation.
+* Reimplement fd<->ocb mapping:
+ x Use a resizable vector.
 
 * Exiting:
  - Manager::Run() could return on rmdir/normal exit to allow cleanup, way
    more obvious than ~dtor magic (the other possibility).
  - OcbMap could keep ocb count, to EBUSY rmdirs when there are active clients.
+ - does deleteing the manager recursively and correctly release all resources?
 
 * Implement more interfaces:
  - unlink() (will need a link count in entities to support this)
@@ -33,5 +35,9 @@
 * Miscellany:
  - Move RAM file entity from vf_file to vf_ram.
  - Rewrite release target.
- - support sys/version message
+ x support sys/version message
+
+Status:
+ - none
+ x done
 
