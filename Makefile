@@ -88,14 +88,14 @@ stop:
 %: %.c
 	$(LINK.c) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
-	-usemsg $@ $<
+	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
 %: %.cc
 	$(LINK.cc) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
-	-usemsg $@ $<
+	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
@@ -105,8 +105,9 @@ stop:
 #	perl -np -e's/A<([^\|]*)\|(.*)>/I<\1> (\2)/g' $< | pod2text > $@
 
 %.html: %.pod
-	pod2html $(POD2HTMLFLAGS) $< > $@
-	rm -f pod2html-*cache
+	pod2html $(POD2HTMLFLAGS) $< > _$@
+	podfix.pl < _$@ > $@
+	rm -f pod2html-*cache _$@
 
 #	perl -np -e's/A<([^\|]*)\|(.*)>/<A href="\2">\1E<60>A>/g' $< > _$<
 
@@ -128,6 +129,9 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.14  1999/07/21 13:42:38  sam
+# fixing the URLs output by pod2html, and usemsg was missing -c option
+#
 # Revision 1.13  1999/07/19 15:42:32  sam
 # think I've worked out the kinks in the build...
 #
