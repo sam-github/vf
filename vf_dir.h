@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/06/20 10:04:16  sam
+// dir entity's factory now abstract and more modular
+//
 // Revision 1.8  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -57,24 +60,37 @@
 
 #include "vf.h"
 
-class VFDirFactory
+class VFEntityFactory
 {
 public:
-	VFDirFactory(mode_t mode = 0555);
-
-	virtual VFEntity* NewDir();
-	virtual VFEntity* NewSpecial(_fsys_mkspecial* req = 0);
-	virtual VFEntity* NewFile(_io_open* req = 0);
+	virtual VFEntity* NewDir()
+	{
+		return ENotSup();
+	}
+	virtual VFEntity* NewSpecial(_fsys_mkspecial* req)
+	{
+		return ENotSup(req);
+	}
+	virtual VFEntity* NewFile(_io_open* req = 0)
+	{
+		return ENotSup(req);
+	}
 
 protected:
-	mode_t mode_;
+	VFEntity* ENotSup(void* v = 0)
+	{
+		v = v;
+
+		errno = ENOTSUP;
+		return 0;
+	}
 };
 
 class VFDirEntity : public VFEntity
 {
 public:
 	VFDirEntity(mode_t mode, uid_t uid = -1, gid_t gid = -1,
-		VFDirFactory* factory = 0);
+		VFEntityFactory* factory = 0);
 	~VFDirEntity();
 
 	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
@@ -112,7 +128,7 @@ private:
 
 	struct stat stat_;
 
-	VFDirFactory* factory_;
+	VFEntityFactory* factory_;
 
 	void SplitPath(const String& path, String& lead, String& tail);
 	void InitStat(mode_t mode, uid_t uid = -1, gid_t gid = -1);

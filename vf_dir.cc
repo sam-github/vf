@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/06/20 10:04:16  sam
+// dir entity's factory now abstract and more modular
+//
 // Revision 1.11  1999/04/30 01:50:57  sam
 // Insert() will now create subdirectories if the directory has a factory.
 //
@@ -68,55 +71,12 @@
 
 #include "vf_log.h"
 #include "vf_dir.h"
-#include "vf_file.h"
-#include "vf_syml.h"
-
-//
-// VFDirFactory
-//
-
-VFDirFactory::VFDirFactory(mode_t mode) :
-	mode_(mode)
-{
-}
-
-VFEntity* VFDirFactory::NewDir()
-{
-	return NewSpecial();
-}
-
-VFEntity* VFDirFactory::NewSpecial(_fsys_mkspecial* req)
-{
-	VFEntity* entity = 0;
-
-	// default is to make a directory
-	if(!req || S_ISDIR(req->mode)) {
-		entity = new VFDirEntity(mode_, -1, -1, this);
-	} else if(S_ISLNK(req->mode)) {
-		const char* pname = &req->path[0] + PATH_MAX + 1;
-		entity = new VFSymLinkEntity(pname);
-	} else {
-		errno = ENOTSUP;
-		return 0;
-	}
-
-	if(!entity) { errno = ENOMEM; }
-
-	return entity;
-}
-
-VFEntity* VFDirFactory::NewFile(_io_open* req)
-{
-	VFEntity* entity = new VFRamFileEntity(req ? req->mode : mode_);
-	if(!entity) { errno = ENOMEM; }
-	return entity;
-}
 
 //
 // VFDirEntity
 //
 
-VFDirEntity::VFDirEntity(mode_t mode, uid_t uid, gid_t gid, VFDirFactory* factory) :
+VFDirEntity::VFDirEntity(mode_t mode, uid_t uid, gid_t gid, VFEntityFactory* factory) :
 	map_(&Hash),
 	factory_(factory)
 {
