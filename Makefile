@@ -2,7 +2,8 @@
 #
 # $Id$
 
-CXXFLAGS = -w2 -g -T1	# privity 1 to make kernel calls __get_fd,__init_fd
+# privity 1 to make kernel calls (__get_fd, __init_fd, etc.)
+CXXFLAGS = -w2 -g -T1
 OFLAGS = -O
 LDFLAGS = -M $(CXXFLAGS) -l vf.lib
 
@@ -10,15 +11,25 @@ INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
 OBJ = vf_mgr.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
 EXE = vf_ram
+VF	= tarfs popfs
 LIB = vf.lib
 DEP = depends.mak
-ALL = $(LIB) $(EXE) deps
+ALL = deps $(LIB) $(EXE)
 
 # default targets
-all: $(ALL)
+.PHONY: all vf deps
+
+all: build vf
+
+build: deps $(LIB) $(EXE)
+
+vf: $(LIB)
+	for d in $(VF); do $(MAKE) -C $$d; done
+
 deps: $(DEP)
 
 # special targets
+
 $(LIB): $(OBJ)
 	wlib -n -q -b $@ $^
 
@@ -27,6 +38,7 @@ $(EXE): $(LIB)
 $(OBJ): $(INC)
 
 # standard targets
+.PHONY: clean empty export
 
 -include $(DEP)
 
@@ -41,7 +53,10 @@ empty: clean
 
 export: all
 
+#.PHONY: clean empty export
+
 # development targets
+.PHONY: run noisy debug stop
 
 run: stop vf_ram
 	vf_ram -vv &
@@ -78,6 +93,8 @@ stop:
 	chmod u+s $@
 
 # release targets
+.PHONY: release
+
 release:
 	cd ..; pax -w -f ../www/vf.tar < vf/Manifest
 	cp vf_ram tarfs/vf_tar ../../www/
@@ -86,6 +103,9 @@ release:
 	gzip ../../www/vf_* ../../www/*.tar
 
 # $Log$
+# Revision 1.10  1999/06/21 10:27:28  sam
+# added targets for the vf sub-dirs
+#
 # Revision 1.9  1999/06/14 14:27:30  sam
 # changed vf_test to vf_ram, and added release target
 #
