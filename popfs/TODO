@@ -2,9 +2,6 @@
   when I "grep hello *" in it, then do a "ls -l" at the same time. Also seems
   to prevent the server ever spawning a pop daemon again, unaccountably.
 
-* spawn child to do the download, so syscalls on already downloaded info
-  can return while the child is downloading a message.
-
 * parse the 'stat' message instead of stating individual messages, should
  be faster!
 
@@ -13,15 +10,20 @@
 
 * permissions checks are important here, but still missing from framework
 
-* vf_pop can't getpass() if you start it in background, so detect that,
-  and have it become a daemon by default (unless -d specified) but only
-  after collecting a valid password.
-
 * implement rm() - this is hard because POP3 doesn't allow messages
   be uniquely identified... and when you delete one the number identifying
   all the others changes (in an implementation dependent way)
 
 * see if I can do cool things with relay to make reads go directly to Fsys...
+
+* vf_pop can't getpass() if you start it in background, so detect that,
+  and have it become a daemon by default (unless -d specified) but only
+  after collecting a valid password.
+ -> DONE
+
+* spawn child to do the download, so syscalls on already downloaded info
+  can return while the child is downloading a message.
+ -> DONE
 
 * implement QUIT when root of vfsys is rmdired.
  -> DONE (actually, don't need since we now QUIT after every transaction)
