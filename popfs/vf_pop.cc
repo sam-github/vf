@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/09/19 22:24:47  sam
+// implemented threading with a work team
+//
 // Revision 1.8  1999/08/09 15:19:38  sam
 // Multi-threaded downloads! Pop servers usually lock the maildrop, so concurrent
 // downloads are not possible, but stats and reads of already downloaded mail
@@ -63,6 +66,7 @@
 #include <vf_dir.h>
 #include <vf_file.h>
 #include <vf_log.h>
+#include <vf_os.h>
 
 #include "url.h"
 
@@ -107,16 +111,16 @@ int VFPopFile::Stat(pid_t pid, const String* path, int lstat)
 	return VFEntity::ReplyInfo(pid);
 
 #if 0
+// not working yet!
+
 	reply->status	= EOK;
 	reply->zero		= 0;
 	reply->stat		= stat_;
 
 	/* if it's an lstat(), claim we're a link */
-	/* not working yet
 	if(req->mode == S_IFLNK) {
 		reply->stat.st_mode = (reply->stat.st_mode & ~S_IFMT) | S_IFREG;
 	}
-	*/
 
 	return -1;
 #endif
@@ -130,6 +134,7 @@ int VFPopFile::ReadLink(pid_t pid, const String& path)
 	return EINVAL;
 
 #if 0
+// not working yet!
 
     reply->status = EOK;
     strcpy(reply->path, description_);
@@ -152,7 +157,7 @@ int VFPopFile::Read(pid_t pid, size_t nbytes, off_t* offset)
 		return QueueRead(pid, nbytes, offset);
 	}
 
-	int e = pop_.Retr(msg_, this, &data_);
+	int e = pop_.Retr(msg_, this);
 
 	switch(e)
 	{
@@ -167,12 +172,14 @@ int VFPopFile::Read(pid_t pid, size_t nbytes, off_t* offset)
 	}
 }
 
-void VFPopFile::Data(istream* data)
+void VFPopFile::Return(int status, istream* data)
 {
-	VFLog(4, "VFFile::Data() readq size %d", readq_.Size());
+	VFLog(2, "VFFile::Return() status %d readq size %d", status, readq_.Size());
 
-	assert(data_ == 0);
-	assert(data != 0);
+	// worked and there is data, or failed and there is no data!
+	assert((status == EOK && data) || (status != EOK && !data));
+
+	assert(data_ == 0); // no current data!
 
 	data_ = data;
 
@@ -181,10 +188,17 @@ void VFPopFile::Data(istream* data)
 		ReadRequest* rr = readq_.Pop();
 		assert(rr);
 
-		int e = ReplyRead(rr->pid, rr->nbytes, rr->offset);
+		if(status != EOK)
+		{
+			ReplyStatus(rr->pid, status);
+		}
+		else
+		{
+			int e = ReplyRead(rr->pid, rr->nbytes, rr->offset);
 
-		if(e != -1) {
-			ReplyStatus(rr->pid, e);
+			if(e != -1) {
+				ReplyStatus(rr->pid, e);
+			}
 		}
 
 		delete rr;
@@ -259,17 +273,14 @@ int VFPopFile::ReplyRead(pid_t pid, int nbytes, off_t* offset)
 // VFPop
 //
 
-static pid_t VFPop::sigproxy_ = -1;
-
-VFPop::VFPop(const char* host, const char* user, const char* pass, int mbuf, int sync) :
+VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem, int sync) :
 	VFManager	(VFVersion("vf_pop", 1.2)),
 	root_	(getuid(), getgid(), 0500),
 	host_	(host),
 	user_	(user),
 	pass_	(pass),
-	mbuf_	(mbuf),
-	sync_	(sync),
-	child_	(-1)
+	inmem_	(inmem),
+	sync_	(sync)
 {
 	pop3 pop;
 
@@ -305,78 +316,54 @@ void VFPop::Run(const char* mount, int verbosity)
 		exit(1);
 	}
 
-	sigproxy_ = qnx_proxy_attach(0, 0, 0, -1);
+	signal(SIGCHLD, SigHandler);
 
-	if(sigproxy_ == -1)
-	{
-		VFLog(0, "qnx_proxy_attach() failed: [%d] %s", errno, strerror(errno));
+	team_ = VFWorkTeam::Create(this, 1);
+
+	if(!team_) {
+		VFLog(0, "work team create failed: [%d] %s\n", VFERR(errno));
 		exit(1);
 	}
-
-	signal(SIGCHLD, SigHandler);
 
 	VFManager::Run();
 }
 
 int VFPop::Service(pid_t pid, VFMsg* msg)
 {
-	VFLog(3, "VFPop::Service() pid %d sigproxy %d", pid, sigproxy_);
+	VFLog(4, "VFPop::Service() pid %d type %#x", pid, msg->type);
 
-	if(pid == sigproxy_)
+	switch(msg->type)
 	{
-		int status;
+	case VF_WORKTEAM_MSG:
+		return team_->Service(pid);
 
-		if(waitpid(child_, &status, WNOHANG) == -1)
-		{
-			VFLog(0, "proxy triggered, but wait failed: [%d] %s",
-				errno, strerror(errno));
-			return -1;
-		}
-
-		// mark child as having completed
-		pid_t child = child_; child_ = -1;
-
-		if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
-		{
-			RetrRequest* rr = retrq_.Pop();
-
-			assert(rr);
-
-			rr->file->Data(rr->mail);
-
-			delete rr;
-
-			AsyncRetr();
-		}
-		else
-		{
-			VFLog(0, "child %d failed: %s %d",
-				child,
-				WIFEXITED(status) ? "exit" : WIFSIGNALED(status) ? "signal" : "stopped",
-				WIFEXITED(status) ? WEXITSTATUS(status) : WTERMSIG(status)
-				);
-			exit(1);
-		}
-
-		return -1;
+	default:
+		return VFManager::Service(pid, msg);
 	}
-
-	return VFManager::Service(pid, msg);
 }
 
-int VFPop::Retr(int msg, VFPopFile* file, istream** str)
+int VFPop::Retr(int msg, VFPopFile* file)
 {
+#if 0
 	if(sync_)
 	{
 		return SyncRetr(msg, str);
 	}
-
-	assert(mbuf_ == 0); // only do async with fstreams for now
+#endif
 
 	iostream* mail = Stream();
 
 	if(!mail) { return errno; }
 
+	int e = team_->Push(msg, file, mail);
+
+	if(e == EOK) {
+		return -1; // request blocked, no status yet
+	}
+
+	return e;	// else an error number
+
+#if 0
 	RetrRequest* rr = new RetrRequest(msg, file, mail);
 
 	if(!rr) { return errno; }
@@ -384,8 +371,24 @@ int VFPop::Retr(int msg, VFPopFile* file, istream** str)
 	retrq_.Push(rr);
 
 	return AsyncRetr();
+#endif
 }
 
+void VFPop::Complete(int status, VFPopFile* file, iostream* data)
+{
+	VFLog(4, "VFPop::Complete() status %d", status);
+
+	assert(file);
+	assert(data);
+
+	if(status != EOK) { delete data; data = 0; }
+
+	if(status < 0) { status = EINTR; }
+
+	file->Return(status, data);
+}
+
+#if 0
 int VFPop::SyncRetr(int msg, istream** str)
 {
 	iostream* mail = Stream();
@@ -404,13 +407,15 @@ int VFPop::SyncRetr(int msg, istream** str)
 	}
 	return e;
 }
+#endif
 
+#if 0
 int VFPop::AsyncRetr()
 {
-	VFLog(4, "VFPop::AsyncRetr() retrq size %d child %d",
+	VFLog(4, "VFPop::AsyncRetr() retrq size %d team_ %d",
 		retrq_.Size(), child_);
 
-	if(child_ != -1)
+	if( != -1)
 	{
 		return -1; // busy retrieving something
 	}
@@ -444,7 +449,9 @@ int VFPop::AsyncRetr()
 		return -1;
 	}
 }
+#endif
 
+#if 0
 int VFPop::GetMail(int msg, ostream* mail)
 {
 	pop3 pop;
@@ -469,12 +476,13 @@ int VFPop::GetMail(int msg, ostream* mail)
 
 	return EOK;
 }
+#endif
 
 iostream* VFPop::Stream() const
 {
 	iostream* s = 0;
 
-	if(mbuf_)
+	if(inmem_)
 	{
 		s = new strstream;
 	}
@@ -499,7 +507,6 @@ iostream* VFPop::Stream() const
 
 	return s;
 }
-
 
 int VFPop::Connect(pop3& pop)
 {
@@ -541,17 +548,26 @@ int VFPop::Disconnect(pop3& pop)
 
 static void VFPop::SigHandler(int signo)
 {
-	VFLog(2, "SigHandler() got signo %d proxy %d", signo, sigproxy_);
+	VFLog(2, "VFPop::SigHandler() got signo %d", signo);
 
 	switch(signo)
 	{
-	case SIGCHLD:
-		if(Trigger(sigproxy_) == -1) {
-			VFLog(0, "Trigger of sig proxy failed: [%d] %s",
-				errno, strerror(errno));
+	case SIGCHLD: {
+		int stat;
+		pid_t child = wait(&stat);
+		if(child == -1) {
+			VFLog(0, "wait failed: [%d] %s", errno, strerror(errno));
 			exit(1);
 		}
-		break;
+
+		VFExitStatus estat = stat;
+
+		VFLog(0, "VFPop::SigHandler() child %d failed: %s with [%d] %s",
+			child, estat.Reason(), estat.Number(), estat.Name());
+
+		exit(1);
+	} break;
+
 	default:
 		break;
 	}
@@ -588,7 +604,7 @@ char*	accountOpt	= 0;
 char*	userOpt		= 0;
 char*	passOpt		= 0;
 char*	hostOpt		= 0;
-int		mbufOpt		= 0;
+int		inmemOpt	= 0;
 int		syncOpt		= 0;
 int		dOpt		= 0;
 
@@ -610,7 +626,7 @@ int GetOpts(int argc, char* argv[])
 			break;
 
 		case 'm':
-			mbufOpt = 1;
+			inmemOpt = 1;
 			break;
 
 		case 's':
@@ -659,7 +675,7 @@ void main(int argc, char* argv[])
 
 	VFLevel("vf_pop", vOpt);
 
-	VFPop vfpop(hostOpt, userOpt, passOpt, mbufOpt, syncOpt);
+	VFPop vfpop(hostOpt, userOpt, passOpt, inmemOpt, syncOpt);
 
 	if(!dOpt)
 	{

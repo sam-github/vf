@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.6  1999/09/19 22:24:47  sam
+// implemented threading with a work team
+//
 // Revision 1.5  1999/08/09 15:19:38  sam
 // Multi-threaded downloads! Pop servers usually lock the maildrop, so concurrent
 // downloads are not possible, but stats and reads of already downloaded mail
@@ -49,6 +52,7 @@
 #include <vf_file.h>
 #include <vf_log.h>
 #include <vf_fifo.h>
+#include "vf_wt.h"
 
 #include "url.h"
 
@@ -68,7 +72,7 @@ public:
 
 	int Read(pid_t pid, size_t nbytes, off_t* offset);
 
-	void Data(istream* data);
+	void Return(int status, istream* data);
 
 private:
 	int QueueRead(pid_t pid, int nbytes, off_t* offset);
@@ -103,7 +107,9 @@ public:
 
 	int Service(pid_t pid, VFMsg* msg);
 
-	int Retr(int msg, VFPopFile* file, istream** str);
+	int Retr(int msg, VFPopFile* file);
+
+	void Complete(int status, VFPopFile* file, iostream* data);
 
 private:
 	VFDirEntity root_;
@@ -111,27 +117,16 @@ private:
 	String	host_;
 	String	user_;
 	String	pass_;
-	int		mbuf_;
+	int		inmem_;
 	int		sync_;
-	pid_t	child_;
 
-	static pid_t sigproxy_;
+	VFWorkTeam* team_;
 
-	struct RetrRequest : public VFFifo<RetrRequest>::Link
-	{
-		RetrRequest(int msg, VFPopFile* file, iostream* mail) :
-			msg(msg), file(file), mail(mail) {}
-
-		int			msg;
-		VFPopFile*	file;
-		iostream*	mail;
-	};
-
-	VFFifo<RetrRequest>	retrq_;
-
+#if 0
 	int SyncRetr	(int msg, istream** str);
 	int AsyncRetr	();
 	int	GetMail		(int msg, ostream* mail);
+#endif
 
 	iostream* Stream() const;
 
@@ -139,8 +134,6 @@ private:
 	int Disconnect(pop3& pop);
 
 	static void SigHandler(int signo);
-
-
 };
 
 #endif
