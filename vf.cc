@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/08/09 15:29:29  sam
+// distinct inode numbers implemented, now find works
+//
 // Revision 1.3  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -42,6 +45,14 @@
 //
 // VFInfo
 //
+
+static ino_t VFInfo::INo()
+{
+	static ino_t ino = 1;
+
+	return ++ino;
+}
+
 
 static dev_t VFInfo::DevNo()
 {

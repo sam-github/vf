@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/08/09 15:29:29  sam
+// distinct inode numbers implemented, now find works
+//
 // Revision 1.10  1999/08/09 15:12:51  sam
 // To allow blocking system calls, I refactored the code along the lines of
 // QSSL's iomanager2 example, devolving more responsibility to the entities,
@@ -79,7 +82,7 @@ class VFFdMap;
 struct VFInfo
 {
 	VFInfo(pid_t pid, mode_t mode) :
-		ino(0),
+		ino(INo()),
 		dev(DevNo()),
 		mode(mode),
 		size(0),
@@ -93,7 +96,7 @@ struct VFInfo
 		{ pid = pid; /* should get uid,gid from this pid */ }
 
 	VFInfo(uid_t uid, gid_t gid, mode_t mode) :
-		ino(0),
+		ino(INo()),
 		dev(DevNo()),
 		mode(mode),
 		size(0),
@@ -137,6 +140,7 @@ struct VFInfo
 			ctime;
 	nlink_t	nlink;
 
+	static ino_t INo();
 	static dev_t DevNo();
 };
 
