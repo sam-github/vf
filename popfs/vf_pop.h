@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/12/05 06:16:18  sam
+// needs String now that Path is being used elsewhere
+//
 // Revision 1.10  1999/10/04 03:34:21  sam
 // forking is now done by the manager
 //
@@ -56,6 +59,8 @@
 
 #ifndef VF_POP_H
 #define VF_POP_H
+
+#include <String.h>
 
 #include <pop3.h>
 
