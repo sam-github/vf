@@ -1,19 +1,26 @@
 /*
- * cctar.h: 
+ * tar_arch.h: 
  *
  * $Id$
  * $Log$
+ * Revision 1.2  1999/04/11 06:44:23  sam
+ * fixed various small bugs that turned up during implementation of a tar fsys
+ *
  * Revision 1.1  1999/04/11 01:56:54  sam
  * Initial revision
- *
  */
 
-#include <string.h>
+#ifndef TAR_ARCH_H
+#define TAR_ARCH_H
+
 #include <errno.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <tar.h>
+#include <unistd.h>
 
 /*
  * Header block on tape.
@@ -120,25 +127,25 @@ union TarRecord {
 
 		switch(linkflag) {
 			case REGTYPE:	// new and old name for regular files
-			case AREGTYPE:	stat->st_mode &= S_IFREG;	break;
-			case LNKTYPE:	stat->st_mode &= S_IFREG;	break; // hard link...
-			case SYMTYPE:	stat->st_mode &= S_IFLNK;	break;
-			case CHRTYPE:	stat->st_mode &= S_IFCHR;	break;
-			case BLKTYPE:	stat->st_mode &= S_IFBLK;	break;
-			case DIRTYPE:	stat->st_mode &= S_IFDIR;	break;
-			case FIFOTYPE:	stat->st_mode &= S_IFIFO;	break;
+			case AREGTYPE:	stat->st_mode |= S_IFREG;	break;
+			case LNKTYPE:	stat->st_mode |= S_IFREG;	break; // hard link...
+			case SYMTYPE:	stat->st_mode |= S_IFLNK;	break;
+			case CHRTYPE:	stat->st_mode |= S_IFCHR;	break;
+			case BLKTYPE:	stat->st_mode |= S_IFBLK;	break;
+			case DIRTYPE:	stat->st_mode |= S_IFDIR;	break;
+			case FIFOTYPE:	stat->st_mode |= S_IFIFO;	break;
 		}
-		return 1;
+		return 0;
 	}
 };
 
-		char* StringDup(const char* in)
-		{
-			if(!in) { return 0; }
-			char* out = new char[strlen(in) + 1];
-			if(out) { strcpy(out, in); }
-			return out;
-		}
+	inline char* StringDup(const char* in)
+	{
+		if(!in) { return 0; }
+		char* out = new char[strlen(in) + 1];
+		if(out) { strcpy(out, in); }
+		return out;
+	}
 
 class TarArchive
 {
@@ -155,26 +162,32 @@ public:
 			seek_ = seek;
 			return seek_;
 		}
-		int Read(void* buf, size_t size)
+		int Read(void* buf, size_t nbytes)
 		{
-			buf = buf, size = size;
-			return 0;
+			if(seek_ > size_) {
+				nbytes = 0;
+			} else if(nbytes + seek_ > size_) {
+				nbytes = size_ - seek_;
+			}
+			off_t off = (offset_ + 1 /*header*/) * BLOCKSZ + seek_;
+
+			int ret = dir_->Read(off, buf, nbytes);
+			if(ret == -1) { errno_ = dir_->ErrorNo(); }
+			return ret;
 		}
 		int Stat(struct stat* stat)
 		{
 			TarRecord record;
 			if(Record(&record) == -1) {
-				return 0;
+				return -1;
 			}
 			return record.Stat(stat);
 		}
 		int Record(TarRecord* r)
 		{
-			if(!r) { return 0; }
-			if(dir_->Read(BLOCKSZ*offset_, r, sizeof(*r)) != sizeof(*r)) {
-				return 0;
-			}
-			return 1;
+			int ret = dir_->Read(BLOCKSZ*offset_, r, sizeof(*r));
+			if(ret == -1) { errno_ = dir_->ErrorNo(); }
+			return ret;
 		}
 /*
 		Iterator()
@@ -183,7 +196,6 @@ public:
 			Clear();
 		}
 */
-
 		Iterator(const Iterator& it) : debug_(it.debug_)
 		{
 			Debug("\tit::it(it&)\n");
@@ -227,12 +239,28 @@ public:
 		{
 			return path_;
 		}
-
 		FILE* DebugFile(FILE* debug)
 		{
 			FILE* last = debug_;
 			debug_ = debug;
 			return last;
+		}
+		int ErrorNo() const
+		{
+			return errno_;
+		}
+		const char* ErrorString() const
+		{
+			return strerror(errno_);
+		}
+		void Debug(const char* format, ...) const
+		{
+			if(debug_) {
+				va_list al;
+				va_start(al, format);
+				vfprintf(debug_, format, al);
+				va_end(al);
+			}
 		}
 
 	private:
@@ -295,21 +323,8 @@ public:
 		// error handling
 		int		errno_;
 
-		int ErrorNo() const { return errno_; }
-		const char* ErrorString() const { return strerror(errno_); }
-
 		// debugging
 		FILE*	debug_;
-
-		void Debug(const char* format, ...) const
-		{
-			if(debug_) {
-				va_list al;
-				va_start(al, format);
-				vfprintf(debug_, format, al);
-				va_end(al);
-			}
-		}
 	};
 
 	typedef Iterator iterator;
@@ -350,6 +365,8 @@ private:
 
 	int Read(off_t offset, void* data, size_t size)
 	{
+//		it->Debug("\tdir::Read() offset %u size %u\n", offset, size);
+
 		if(lseek(fd_, offset, SEEK_SET) == -1) {
 			errno_ = errno; return -1;
 		}
@@ -413,4 +430,6 @@ private:
 			it->valid_, it->offset_, it->span_);
 	}
 };
+
+#endif
 
