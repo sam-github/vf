@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/09/26 23:40:21  sam
+// moved the popfile into it's own module
+//
 // Revision 1.11  1999/09/26 22:50:27  sam
 // reorganized the templatization, checking in prior to last cleanup
 //
@@ -74,11 +77,12 @@
 #include <vf_os.h>
 
 #include "vf_pop.h"
+#include "vf_popfile.h"
 
 #include "url.h"
 
 // include definitions of the workteam functions
-#include "vf_wt.cc"
+#include <vf_wt.cc>
 
 const char* ItoA(int i)
 {
@@ -86,7 +90,7 @@ const char* ItoA(int i)
 	return itoa(i, buffer, 10);
 }
 
-PopFail(const char* cmd, pop3& pop) 
+void PopFail(const char* cmd, pop3& pop) 
 {
 	VFLog(0, "%s failed: %s", cmd, pop->response() + strlen("-ERR "));
 	exit(1);
@@ -155,204 +159,16 @@ int PopTask::operator () (const PopRequest& request, VFDataIfx& dh)
 }
 
 //
-// VFPopFile
-//
-
-VFPopFile::VFPopFile(int msg, VFPop& pop, int size) :
-	VFFileEntity(getuid(), getgid(), 0400),
-	msg_(msg), pop_(pop), size_(size), data_(0), description_(0)
-{
-	info_.size = size_;
-
-	ostrstream os;
-	os << "TBD" << '\0';
-	description_ = os.str();
-}
-
-VFPopFile::~VFPopFile()
-{
-	delete data_;
-	delete description_;
-}
-
-int VFPopFile::Stat(pid_t pid, const String* path, int lstat)
-{
-    VFLog(2, "VFPopFile::Stat() pid %d path \"%s\" lstat %d",
-		pid, (const char*) path, lstat);
-
-	return VFEntity::ReplyInfo(pid);
-
-#if 0
-// not working yet!
-
-	reply->status	= EOK;
-	reply->zero		= 0;
-	reply->stat		= stat_;
-
-	/* if it's an lstat(), claim we're a link */
-	if(req->mode == S_IFLNK) {
-		reply->stat.st_mode = (reply->stat.st_mode & ~S_IFMT) | S_IFREG;
-	}
-
-	return -1;
-#endif
-}
-
-int VFPopFile::ReadLink(pid_t pid, const String& path)
-{
-	VFLog(2, "VFSymLinkEntity::ReadLink() pid %d path '%s' description '%s'",
-		pid, (const char*) path, description_);
-
-	return EINVAL;
-
-#if 0
-	// not working yet!
-
-	reply->status = EOK;
-	strcpy(reply->path, description_);
-
-	return sizeof(*reply) + strlen(description_);
-#endif
-}
-
-int VFPopFile::Read(pid_t pid, size_t nbytes, off_t* offset)
-{
-	VFLog(2, "VFPopFile::Read() pid %d nbytes %ld offset %ld size %ld",
-		pid, nbytes, *offset, size_);
-
-	if(data_)			// data retrieved, reply immediately
-	{
-		return ReplyRead(pid, nbytes, offset);
-	}
-	if(readq_.Size())	// data has been requested, block
-	{
-		return QueueRead(pid, nbytes, offset);
-	}
-
-	int e = pop_.Retr(msg_, this);
-
-	switch(e)
-	{
-	case EOK:	// retr completed immediately
-		return ReplyRead(pid, nbytes, offset);
-
-	case -1:	// retr queued, block
-		return QueueRead(pid, nbytes, offset);
-
-	default:	// error occurred
-		return e;
-	}
-}
-
-void VFPopFile::Return(int status, istream* data)
-{
-	VFLog(2, "VFFile::Return() status %d readq size %d", status, readq_.Size());
-
-	// worked and there is data, or failed and there is no data!
-	assert((status == EOK && data) || (status != EOK && !data));
-
-	assert(data_ == 0); // no current data!
-
-	data_ = data;
-
-	while(readq_.Size())
-	{
-		ReadRequest* rr = readq_.Pop();
-		assert(rr);
-
-		if(status != EOK)
-		{
-			ReplyStatus(rr->pid, status);
-		}
-		else
-		{
-			int e = ReplyRead(rr->pid, rr->nbytes, rr->offset);
-
-			if(e != -1) {
-				ReplyStatus(rr->pid, e);
-			}
-		}
-
-		delete rr;
-	}
-}
-
-int VFPopFile::QueueRead(pid_t pid, int nbytes, off_t* offset)
-{
-	ReadRequest* rr = new ReadRequest(pid, nbytes, offset);
-
-	if(!rr) { return ENOMEM; }
-
-	readq_.Push(rr);
-
-	return -1;
-}
-
-int VFPopFile::ReplyRead(pid_t pid, int nbytes, off_t* offset)
-{
-	VFLog(3, "VFPopFile::ReplyRead() pid %d nbytes %d offset %d",
-		pid, nbytes, *offset);
-
-	assert(data_);
-
-	// adjust nbytes if the read would be past the end of file
-	if(*offset > size_) {
-			nbytes = 0;
-	} else if(*offset + nbytes > size_) {
-		nbytes = size_ - *offset;
-	}
-
-	// XXX Max msg len is 65500U, we need to be able to deal with this
-	char* buffer = (char*) alloca(nbytes);
-
-	if(!buffer)
-	{
-		return ENOMEM;
-	}
-
-	// these will set errno if we're using a file, if its a strstream...?
-	if(!data_->seekg(*offset)) {
-		VFLog(1, "ReplyRead() seekg() iostate %#x", data_->rdstate());
-		return EIO;
-	}
-	if(!data_->read(buffer, nbytes)) {
-		VFLog(1, "ReplyRead() read() iostate %#x gcount %d",
-			data_->rdstate(), data_->gcount());
-		return EIO;
-	}
-
-	nbytes = data_->gcount(); // might not be nbytes...
-
-	struct _io_read_reply reply;
-	struct _mxfer_entry mx[2];
-
-	reply.status = EOK;
-	reply.nbytes = nbytes;
-	reply.zero = 0;
-
-	_setmx(mx + 0, &reply, sizeof(reply) - sizeof(reply.data));
-	_setmx(mx + 1, buffer, nbytes);
-
-	if(Replymx(pid, 2, mx) != -1)
-	{
-		*offset += nbytes;
-	}
-
-	return -1;
-}
-
-//
 // VFPop
 //
 
-VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem, int sync) :
+VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem) :
 	VFManager	(VFVersion("vf_pop", 1.2)),
 	root_	(getuid(), getgid(), 0500),
 	host_	(host),
 	user_	(user),
 	pass_	(pass),
-	inmem_	(inmem),
-	sync_	(sync)
+	inmem_	(inmem)
 {
 	pop3 pop;
 
@@ -416,13 +232,6 @@ int VFPop::Service(pid_t pid, VFMsg* msg)
 
 int VFPop::Retr(int msg, VFPopFile* file)
 {
-#if 0
-	if(sync_)
-	{
-		return SyncRetr(msg, str);
-	}
-#endif
-
 	iostream* mail = Stream();
 
 	if(!mail) { return errno; }
@@ -438,16 +247,6 @@ int VFPop::Retr(int msg, VFPopFile* file)
 	}
 
 	return e;	// else an error number
-
-#if 0
-	RetrRequest* rr = new RetrRequest(msg, file, mail);
-
-	if(!rr) { return errno; }
-
-	retrq_.Push(rr);
-
-	return AsyncRetr();
-#endif
 }
 
 void VFPop::Complete(int status, const PopInfo& info, iostream* data)
@@ -463,96 +262,6 @@ void VFPop::Complete(int status, const PopInfo& info, iostream* data)
 
 	info.file->Return(status, data);
 }
-
-#if 0
-int VFPop::SyncRetr(int msg, istream** str)
-{
-	iostream* mail = Stream();
-
-	if(!mail) { return errno; }
-
-	int e = GetMail(msg, mail);
-
-	if(e == EOK)
-	{
-		*str = mail;
-	}
-	else
-	{
-		delete mail;
-	}
-	return e;
-}
-#endif
-
-#if 0
-int VFPop::AsyncRetr()
-{
-	VFLog(4, "VFPop::AsyncRetr() retrq size %d team_ %d",
-		retrq_.Size(), child_);
-
-	if( != -1)
-	{
-		return -1; // busy retrieving something
-	}
-
-	RetrRequest* rr = retrq_.Peek();
-
-	if(!rr)
-	{
-		return -1; // nothing to do
-	}
-
-	switch((child_ = fork()))
-	{
-	case -1:
-		VFLog(1, "VFPop::AsyncRetr() fork() failed: [%d] %s",
-			errno, strerror(errno));
-		return errno;
-
-	case 0: {
-		int e = GetMail(rr->msg, rr->mail);
-
-		if(e != EOK) {
-			VFLog(1, "VFPop::AsyncRetr() pid %d GetMail() failed: [%d] %s",
-				getpid(), errno, strerror(errno));
-		}
-		exit(e);
-	}
-
-	default:
-		VFLog(2, "VFPop::AsyncRetr() forked child %d", child_);
-		return -1;
-	}
-}
-#endif
-
-#if 0
-int VFPop::GetMail(int msg, ostream* mail)
-{
-	pop3 pop;
-
-	if(!Connect(pop))
-	{
-		return EHOSTDOWN;
-	}
-
-	if(!pop->retr(msg, mail))
-	{
-		VFLog(1, "retr %d failed: %s", msg, pop->response());
-
-		delete mail;
-
-		return ECONNABORTED;
-	}
-
-	mail->flush();
-
-	Disconnect(pop);
-
-	return EOK;
-}
-#endif
 
 iostream* VFPop::Stream() const
 {
@@ -660,7 +369,7 @@ usage: vf_pop3 [-hv] [-p vf] user[:passwd]@hostname
     -h   Print this message and exit.
     -v   Increase the verbosity level, default is 0.
     -p   Path to place virtual file system at, default is './user@hostname'.
-    -m   Buffer read mail messages in memory, default is a temp file
+    -m   Buffer read mail messages in memory, default is in a temp file
          opened in /tmp with perms 0600 and immediately unlinked after
          being opened.
     -d   Don't become a daemon, default is to fork into the background after
@@ -668,8 +377,9 @@ usage: vf_pop3 [-hv] [-p vf] user[:passwd]@hostname
 
 Mounts the specified pop3 account as a virtual filesystem at 'vf'.
 
-The password is optional, probably shouldn't be specified on the command
-line for security reasons, and will be prompted for if not supplied.
+The 'passwd' parameter is only optionally specified on the command line,
+probably shouldn't be for security reasons, and will be prompted for if not
+supplied.
 
 Doing a rmdir on the path 'vf' will cause vf_pop to exit.
 #endif
@@ -681,12 +391,11 @@ char*	userOpt		= 0;
 char*	passOpt		= 0;
 char*	hostOpt		= 0;
 int		inmemOpt	= 0;
-int		syncOpt		= 0;
 int		dOpt		= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:msd")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvp:md")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -703,10 +412,6 @@ int GetOpts(int argc, char* argv[])
 
 		case 'm':
 			inmemOpt = 1;
-			break;
-
-		case 's':
-			syncOpt = 1;
 			break;
 
 		case 'd':
@@ -751,7 +456,7 @@ void main(int argc, char* argv[])
 
 	VFLevel("vf_pop", vOpt);
 
-	VFPop vfpop(hostOpt, userOpt, passOpt, inmemOpt, syncOpt);
+	VFPop vfpop(hostOpt, userOpt, passOpt, inmemOpt);
 
 	if(!dOpt)
 	{

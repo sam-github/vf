@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/09/26 23:40:21  sam
+// moved the popfile into it's own module
+//
 // Revision 1.8  1999/09/26 22:50:27  sam
 // reorganized the templatization, checking in prior to last cleanup
 //
@@ -55,55 +58,16 @@
 
 #include <vf_mgr.h>
 #include <vf_dir.h>
-#include <vf_file.h>
 #include <vf_log.h>
-#include <vf_fifo.h>
-
-#include "vf_wt.h"
+#include <vf_wt.h>
 
 #include "url.h"
 
-class VFPop;
+class VFPopFile;
 
-class VFPopFile : public VFFileEntity
-{
-public:
-	VFPopFile(int msg, VFPop& pop, int size);
-	~VFPopFile();
-
-	// These aren't implemented yet, I'm going to try and have the files
-	// look like links to lstat(), but not to cat and vi, so I can reply
-	// to readlink() with a subject/from field...
-	int Stat(pid_t pid, const String* path, int lstat); // XXX
-	int ReadLink(pid_t pid, const String& path); // XXX
-
-	int Read(pid_t pid, size_t nbytes, off_t* offset);
-
-	void Return(int status, istream* data);
-
-private:
-	int QueueRead(pid_t pid, int nbytes, off_t* offset);
-	int ReplyRead(pid_t pid, int nbytes, off_t* offset);
-
-	VFPop&		pop_;
-	int			msg_;
-	istream*	data_;
-	int			size_;
-
-	char*		description_;
-
-	struct ReadRequest : public VFFifo<ReadRequest>::Link
-	{
-		ReadRequest(pid_t pid, int nbytes, off_t* offset) :
-			pid(pid), nbytes(nbytes), offset(offset) {}
-
-		pid_t	pid;
-		int		nbytes;
-		off_t*	offset;
-	};
-
-	VFFifo<ReadRequest>	readq_;
-};
+//
+// Request, Info, and Task used by the WorkTeam framework.
+//
 
 struct PopRequest
 {
@@ -130,10 +94,15 @@ private:
 	const String pass;
 };
 
+//
+// VFPop: implements the complete interface for the WorkTeam callbacks,
+//	as well as being the manager.
+//
+
 class VFPop : public VFManager, public VFCompleteIfx<PopInfo>
 {
 public:
-	VFPop(const char* host, const char* user, const char* pass, int mbuf, int sync);
+	VFPop(const char* host, const char* user, const char* pass, int mbuf);
 
 	void Run(const char* mount, int verbosity);
 
@@ -150,15 +119,8 @@ private:
 	String	user_;
 	String	pass_;
 	int		inmem_;
-	int		sync_;
 
 	VFWorkTeam<PopRequest, PopInfo, PopTask>* team_;
-
-#if 0
-	int SyncRetr	(int msg, istream** str);
-	int AsyncRetr	();
-	int	GetMail		(int msg, ostream* mail);
-#endif
 
 	iostream* Stream() const;
 
