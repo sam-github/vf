@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.7  1998/04/28 07:25:22  sroberts
+// added fd number to diagnostic output
+//
 // Revision 1.6  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -83,9 +86,10 @@ VFOcb* VFDirEntity::Open(
 	_io_open* req,
 	_io_open_reply* reply)
 {
-	VFLog(2, "VFDirEntity::Open(\"%s\")", (const char *) path);
+	VFLog(2, "VFDirEntity::Open() fd %d path \"%s\"",
+		req->fd, (const char *) path);
 
-	// check permissions
+	// check permissions...
 
 	if(path == "") // open the directory
 	{
