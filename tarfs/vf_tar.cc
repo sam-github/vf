@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.6  1999/04/30 02:39:38  sam
+// more info in usage message
+//
 // Revision 1.5  1999/04/30 01:54:26  sam
 // Changes to deal with archives where members are not in order of deepest
 // last, and where intermediate directories are not in the archive.
@@ -62,7 +65,8 @@ usage: vf_tar [-hv] [-p vf] tarfile
     -u   attempt to use the user and group of the tar archive member to find
          the local uid and gid
 
-Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'.
+Mounts 'tarfile' as a virtual (read-only) filesystem at 'vf'. It can be
+unmounted by doing a rmdir on the vfsys path (causing vf_tar to exit).
 
 It isn't clear what the correct way of dealing with absolute paths is. The
 current behaviour is:
