@@ -1,11 +1,11 @@
 # Makefile:
 # $Id$
 
-TAR = tar/dir.tar
+TAR = test/dir.tar
 
 CXXFLAGS = -w2 -g -I.. -T1 # privity 1 to make kernel calls __get_fd,__init_fd
 OFLAGS   = -O
-LDFLAGS  = -M $(CXXFLAGS) -l vf.lib -L..
+LDFLAGS  = -M $(CXXFLAGS)
 
 INC = 
 SRC = $(wildcard *.cc)
@@ -24,7 +24,7 @@ all: $(ALL)
 $(LIB): $(OBJ)
 	wlib -n -q -b $@ $^
 
-$(EXE): $(LIB)
+$(EXE): $(LIB) ../vf.lib
 
 $(OBJ): $(INC)
 
@@ -44,7 +44,7 @@ empty: clean
 # development targets
 
 run: stop vf_tar
-	vf_tar -u -vvv $(TAR) &
+	vf_tar -u -v $(TAR) &
 
 noisy: stop vf_tar
 	vf_tar -u -vvvv $(TAR) &
@@ -78,6 +78,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.4  1999/07/02 15:27:31  sam
+# decreased verbosity of run command, and made executables depend on vf.lib
+#
 # Revision 1.3  1999/06/18 17:04:25  sam
 # vf_tar now gueses name of directory, so don't specify
 #
