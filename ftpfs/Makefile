@@ -11,7 +11,7 @@ OBJ = ftpparse.o
 EXE = cftp
 LIB = vf_ftp.lib
 DEP = depends.mak
-ALL = $(DEP) $(LIB) $(EXE)
+ALL = $(LIB) $(EXE)
 
 # default target
 all: $(ALL)
@@ -29,6 +29,8 @@ $(OBJ): $(INC)
 # standard targets
 
 -include $(DEP)
+
+deps: $(DEP)
 
 $(DEP): $(SRC) $(INC)
 	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
@@ -76,6 +78,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.2  1999/10/11 14:58:54  sam
+# doesn't make deps automatically anymore    e
+#
 # Revision 1.1  1999/07/21 13:44:02  sam
 # Initial revision
 #
