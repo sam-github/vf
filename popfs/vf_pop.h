@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.10  1999/10/04 03:34:21  sam
+// forking is now done by the manager
+//
 // Revision 1.9  1999/09/26 23:40:21  sam
 // moved the popfile into it's own module
 //
@@ -104,7 +107,7 @@ class VFPop : public VFManager, public VFCompleteIfx<PopInfo>
 public:
 	VFPop(const char* host, const char* user, const char* pass, int mbuf);
 
-	void Run(const char* mount, int verbosity);
+	void Run(const char* mount, int verbosity, int nodaemon);
 
 	int Service(pid_t pid, VFMsg* msg);
 

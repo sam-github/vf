@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/10/04 03:34:21  sam
+// forking is now done by the manager
+//
 // Revision 1.13  1999/09/27 00:17:41  sam
 // using new list() command to read the whole message list, rather than
 // piece by piece.
@@ -197,12 +200,14 @@ VFPop::VFPop(const char* host, const char* user, const char* pass, int inmem) :
 	Disconnect(pop);
 }
 
-void VFPop::Run(const char* mount, int verbosity)
+void VFPop::Run(const char* mount, int verbosity, int nodaemon)
 {
 	if(!Init(&root_, mount, verbosity)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
+
+	Start(nodaemon);
 
 	signal(SIGCHLD, SigHandler);
 
@@ -459,22 +464,6 @@ void main(int argc, char* argv[])
 
 	VFPop vfpop(hostOpt, userOpt, passOpt, inmemOpt);
 
-	if(!dOpt)
-	{
-		// go into background
-
-		switch(fork())
-		{
-		case 0:
-			break;
-		case -1:
-			VFLog(0, "fork failed: [%d] %s", errno, strerror(errno));
-			exit(1);
-		default:
-			exit(0);
-		}
-	}
-
-	vfpop.Run(pathOpt, vOpt);
+	vfpop.Run(pathOpt, vOpt, dOpt);
 }
 

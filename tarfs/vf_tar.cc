@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.14  1999/10/04 03:33:20  sam
+// forking is now done by the manager
+//
 // Revision 1.13  1999/08/09 15:17:56  sam
 // Ported framework modifications down.
 //
@@ -341,26 +344,12 @@ void main(int argc, char* argv[])
 		strcpy(pathOpt, path);
 	}
 
-	if(!dOpt)
-	{
-		// go into background
-
-		switch(fork())
-		{
-		case 0:
-			break;
-		case -1:
-			VFLog(0, "fork failed: [%d] %s", errno, strerror(errno));
-			exit(1);
-		default:
-			exit(0);
-		}
-	}
-
 	if(!vfmgr.Init(top, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
+
+	vfmgr.Start(dOpt);
 
 	vfmgr.Run();
 }

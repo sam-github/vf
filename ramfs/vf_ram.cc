@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.12  1999/10/04 03:33:52  sam
+// forking is now done by the manager
+//
 // Revision 1.11  1999/08/09 15:16:23  sam
 // Ported framework modifications down.
 //
@@ -72,8 +75,9 @@
 
 usage: vf_ram [-hv] [-p vf]
     -h   print help message
-    -v   increse the verbosity level
+    -v   increase the verbosity level
     -p   path of virtual file system to create
+    -d   debug, don't fork into the background
 
 Mounts a RAM filesystem at 'vf'.
 
@@ -243,10 +247,11 @@ public:
 
 int		vOpt = 0;
 char*	pathOpt = "ram";
+int		debugOpt = 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:")) != -1; )
+	for(int c; (c = getopt(argc, argv, "hvp:d")) != -1; )
 	{
 		switch(c)
 		{
@@ -262,6 +267,10 @@ int GetOpts(int argc, char* argv[])
 			pathOpt = optarg;
 			break;
 
+		case 'd':
+			debugOpt = 1;
+			break;
+
 		default:
 			exit(1);
 		}
@@ -270,7 +279,7 @@ int GetOpts(int argc, char* argv[])
 	return 0;
 }
 
-int main(int argc, char* argv[])
+void main(int argc, char* argv[])
 {
 	GetOpts(argc, argv);
 
@@ -290,10 +299,7 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
+	vfmgr.Start(debugOpt);
 	vfmgr.Run();
-
-	assert(0);
-
-	return 0;
 }
 
