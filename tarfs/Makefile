@@ -1,6 +1,8 @@
 # Makefile:
 # $Id$
 
+TAR = tar/dir.tar
+
 CXXFLAGS = -w2 -g -I.. -T1 # privity 1 to make kernel calls __get_fd,__init_fd
 OFLAGS   = -O
 LDFLAGS  = -M $(CXXFLAGS) -l vf.lib -L..
@@ -42,13 +44,13 @@ empty: clean
 # development targets
 
 run: stop vf_tar
-	vf_tar -u -vvv -p dir dir.tar &
+	vf_tar -u -vvv $(TAR) &
 
 noisy: stop vf_tar
-	vf_tar -u -vvvv &
+	vf_tar -u -vvvv $(TAR) &
 
 debug: stop vf_tar
-	wd vf_tar -u -vvvv -p dir dir.tar &
+	wd vf_tar -u -vvvv $(TAR) &
 
 stop:
 	-slay -f vf_tar || true
@@ -76,6 +78,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.3  1999/06/18 17:04:25  sam
+# vf_tar now gueses name of directory, so don't specify
+#
 # Revision 1.2  1999/04/28 03:44:42  sam
 # numerous improvements
 #
