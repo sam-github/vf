@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1998/04/06 06:48:14  sroberts
+// implemented write()
+//
 // Revision 1.4  1998/04/05 23:54:00  sroberts
 // added mkdir() support
 //
@@ -63,7 +66,7 @@ public:
 
 	virtual int Stat() = 0;
 	virtual int Read() = 0;
-	virtual int Write() = 0;
+	virtual int Write(pid_t pid, _io_write* req, _io_write_reply* reply) = 0;
 	virtual int Seek() = 0;
 	virtual int Chmod() = 0;
 	virtual int Chown() = 0;
