@@ -2,10 +2,13 @@
 #
 # $Id$
 
+VERSION=vf-$(shell cat Version)
+
 # privity 1 to make kernel calls (__get_fd, __init_fd, etc.)
 CXXFLAGS = -w2 -g -T1
 OFLAGS = -O
 LDFLAGS = -M $(CXXFLAGS) -l vf.lib
+POD2HTMLFLAGS = --title="A C++ Framework for QNX Virtual Filesystems"
 
 INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
@@ -55,6 +58,8 @@ empty: clean
 
 export: all
 
+docs: vf.txt vf.html
+
 #.PHONY: clean empty export
 
 # development targets
@@ -94,17 +99,38 @@ stop:
 	chown root $@
 	chmod u+s $@
 
+%.txt: %.pod
+	pod2text $< > $@
+
+#	perl -np -e's/A<([^\|]*)\|(.*)>/I<\1> (\2)/g' $< | pod2text > $@
+
+%.html: %.pod
+	pod2html $(POD2HTMLFLAGS) $< > $@
+	rm -f pod2html-*cache
+
+#	perl -np -e's/A<([^\|]*)\|(.*)>/<A href="\2">\1E<60>A>/g' $< > _$<
+
 # release targets
 .PHONY: release
 
-release:
-	cd ..; pax -w -f ../www/vf.tar < vf/Manifest
-	cp vf_ram tarfs/vf_tar ../../www/
-	wstrip ../../www/vf_ram
-	wstrip ../../www/vf_tar
-	gzip ../../www/vf_* ../../www/*.tar
+release: docs
+	mkdir -p $(VERSION)
+	pax -w -f - < Manifest | (cd $(VERSION); tar -xf-)
+	tar -cvf release/$(VERSION).tar $(VERSION)
+	gzip release/$(VERSION).tar
+	mv release/$(VERSION).tar.gz release/$(VERSION).tgz
+	rm -Rf $(VERSION)
+	cp vf_ram popfs/vf_pop tarfs/vf_tar release/
+	wstrip -q release/vf_ram
+	wstrip -q release/vf_pop
+	wstrip -q release/vf_tar
+	gzip -f release/vf_ram release/vf_pop release/vf_tar
+	cp vf.html release/
 
 # $Log$
+# Revision 1.12  1999/07/14 17:17:47  sam
+# documentation built into the release now
+#
 # Revision 1.11  1999/07/11 11:27:33  sam
 # decreased vf_ram verbosity for run, and tweaked build defaults
 #
