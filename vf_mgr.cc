@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.6  1998/04/28 07:23:50  sroberts
+// changed Handle() to Service() - the name was confusing me - and added
+// readable system message names to debug output
+//
 // Revision 1.5  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -122,9 +126,10 @@ int VFManager::Init(VFEntity* root, const char* mount, int verbosity)
 	return true;
 }
 
-int VFManager::Handle(pid_t pid, VFIoMsg* msg)
+int VFManager::Service(pid_t pid, VFIoMsg* msg)
 {
-	VFLog(3, "VFManager::Handle() pid %d type %#x)", pid, msg->type);
+	VFLog(3, "VFManager::Service() pid %d request %s (%#x)",
+		pid, MessageName(msg->type), msg->type);
 
 	int size = -1;
 
@@ -157,8 +162,10 @@ int VFManager::Handle(pid_t pid, VFIoMsg* msg)
 			} break;
 
 		default:
+			VFLog(1, "unknown msg type IO_HANDLE subtype %#x path \"%s\"",
+				msg->open.oflag, msg->open.path);
 			msg->status = ENOSYS;
-			size = sizeof msg->status;
+			size = sizeof(msg->status);
 			break;
 		}
 		break;
@@ -283,7 +290,7 @@ void VFManager::Run()
 	{
 		pid = Receive(0, &msg_, sizeof(msg_));
 
-		size = Handle(pid, &msg_);
+		size = Service(pid, &msg_);
 
 		assert(size >= sizeof(msg_.status));
 
@@ -293,6 +300,37 @@ void VFManager::Run()
 				pid, errno, strerror(errno)
 				);
 		}
+	}
+}
+
+static const char* VFManager::MessageName(msg_t type)
+{
+	switch(type)
+	{
+	case 0x0101: return "IO_OPEN"; 
+	case 0x0102: return "IO_CLOSE"; 
+	case 0x0103: return "IO_READ"; 
+	case 0x0104: return "IO_WRITE"; 
+	case 0x0105: return "IO_LSEEK"; 
+	case 0x0106: return "IO_RENAME"; 
+	case 0x0107: return "IO_GET_CONFIG"; 
+	case 0x0108: return "IO_DUP"; 
+	case 0x0109: return "IO_HANDLE"; 
+	case 0x010A: return "IO_FSTAT"; 
+	case 0x010B: return "IO_CHMOD"; 
+	case 0x010C: return "IO_CHOWN"; 
+	case 0x010D: return "IO_UTIME"; 
+	case 0x010E: return "IO_FLAGS"; 
+	case 0x010F: return "IO_LOCK"; 
+	case 0x0110: return "IO_CHDIR"; 
+	case 0x0112: return "IO_READDIR"; 
+	case 0x0113: return "IO_REWINDDIR"; 
+	case 0x0114: return "IO_IOCTL"; 
+	case 0x0115: return "IO_STAT"; 
+	case 0x0116: return "IO_SELECT"; 
+	case 0x0117: return "IO_QIOCTL"; 
+	case 0x0202: return "FSYS_MKSPECIAL"; 
+	default: return "unknown";
 	}
 }
 

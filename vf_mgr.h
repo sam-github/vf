@@ -4,6 +4,10 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.6  1998/04/28 07:23:50  sroberts
+// changed Handle() to Service() - the name was confusing me - and added
+// readable system message names to debug output
+//
 // Revision 1.5  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -99,9 +103,11 @@ class VFManager
 public:
 	Init(VFEntity *root, const char* mount, int verbosity = 1);
 
-	int Handle(pid_t pid, VFIoMsg* msg);
+	int Service(pid_t pid, VFIoMsg* msg);
 
 	void Run();
+
+	static const char* MessageName(msg_t type);
 
 private:
 	VFOcbMap* ocbMap_;
