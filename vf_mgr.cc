@@ -20,6 +20,10 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.15  1999/07/11 11:28:47  sam
+// ocb maps now use an index into a resizeable watcom vector, so should be
+// 32-bit pointer safe
+//
 // Revision 1.14  1999/06/21 12:36:22  sam
 // implemented sysmsg... version
 //
@@ -73,12 +77,34 @@
 
 #include <strstream.h>
 
+#include <wcvector.h>
+
 #include "vf_log.h"
 #include "vf_mgr.h"
 
 //
 // VFOcbMap
 //
+
+// Seems impossible to declare this as a nested class... a weird Watcom bug?
+
+	template <class T>
+	class Pointer
+	{
+	public:
+		Pointer(T* i = 0) : i_(i) { }
+		Pointer(const Pointer& i) { i_ = i.i_; }
+
+		operator = (T* i) { i_ = i; }
+
+		operator T* () { return i_; }
+
+	//  int integer() { return i_; }
+
+	private:
+		T* i_;
+	};
+
 
 class VFOcbMap
 {
@@ -91,8 +117,13 @@ public:
 
 	VFOcb* Get(pid_t pid, int fd)
 	{
-		VFOcb *ocb = (VFOcb*) __get_fd(pid, fd, ctrl_);
-		if(ocb == (VFOcb*) 0 || ocb == (VFOcb*) -1)
+		int index = (int) __get_fd(pid, fd, ctrl_);
+
+		VFOcb *ocb = ocbs_[index];
+
+		assert(ocb != (VFOcb*) -1);
+
+		if(ocb == (VFOcb*) 0)
 		{
 			errno = EBADF;
 			return 0;
@@ -105,12 +136,21 @@ public:
 		// increment reference count, if not mapping to null
 		if(ocb) { ocb->Refer(); }
 
-		// the documentation says that we CAN'T use 32-bit pointers as the handle
-		// since it's a 16 bit value... but they do it in the sample, so is it OK?
-		// Looking at <sys/fd.h>, looks like up to 24-bit might be ok...
-		assert((0xff000000 & (unsigned)ocb) == 0);
 		errno = EOK;
-		if(qnx_fd_attach(pid, fd, 0, 0, 0, 0, (unsigned) ocb) == -1)
+
+		// find a free index number, if we're mapping an ocb, the index
+		// 0 is reserved to mean "not mapped"
+		int index = 0;
+
+		if(ocb)
+		{
+			index = 1;
+			while(ocbs_[index]) { index++; }
+		}
+
+		ocbs_[index] = ocb;
+
+		if(qnx_fd_attach(pid, fd, 0, 0, 0, 0, index) == -1)
 		{
 			VFLog(2, "VFOcbMap::Map(%d, %d) failed: [%d] %s",
 				pid, fd, errno, strerror(errno));
@@ -137,6 +177,8 @@ public:
 
 private:
 	void* ctrl_;
+
+	WCValVector< Pointer<VFOcb> >	ocbs_;
 };
 
 //
