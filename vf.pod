@@ -24,32 +24,20 @@ a virtual filesystem framework in C++, and implemented a
 RAM filesystem in the process since it seemed a good test
 case.
 
-Unfortuneately, I've only recently discovered that QSSL has
+I've only recently discovered that QSSL has
 published a much better example of writing a virtual filesystem than
 they used to have, and that the example comes in the form
 of a framework, see iomanager2 (I<ftp://ftp.qnx.com/usr/free/qnx4/os/samples/misc/iomanager2.tgz>).
-My framework redoes some of
-their work, but also does things theirs doesn't.
-I'll probably be reading the new example in detail soon,
-and hope to rip any useful ideas or code from it into mine.
+My framework is surprisingly similar, but does some things
+theirs doesn't. I've read theirs and merged some of the
+useful ideas into mine.
 
 As a next step I decided to tackle a Tar filesystem,
 a resoure manager that would give a (read-only)
 filesystem-like interface to a tar file, one that you can
-cd into, then view a file with less or vi, etc. Since tar
-files have a pseudo-text header format, it wasn't too hard
-to write a class that iterates through a tar
-archive, where the iterator supports stat()ing the file,
-and read()ing the file data.
-
-Once I had the tar archive classes, it only took a night
-to implement a tar filesystem using my framework. This
-was much faster and easier than I had expected: code intended
-for reuse usually isn't until it actually has been. I
-was pretty pleased! It then took me another few weekends
-of sporadic work to solve a few bugs, and implement a few
-features missing from the framework that I really wanted,
-such as support for symbolic links.
+cd into, then view a file with less or vi, etc. This is now
+done, and I'm currently working on getting support for
+compressed tar files.
 
 My next goal was going to be an ftp filesystem, based on the ftp
 support that already exists in the socket++ (I<http://toronto.qenesis.com/Sam/socket++.html>)
@@ -61,10 +49,11 @@ editor. Compilation requires my version of socket++1.10 since
 it uses a pop3 protocol class I implemented using the socket++
 framework.
 
-Before I go back to the ftp filesystem I want to multi-thread
-the pop mail download with local system calls made on already
-downloaded files, and I want to read gzipped tar files. Not
-hard, but I don't ever have enough time.
+Before I go back to the ftp filesystem I want a multi-threaded
+pop mail download so io messages that can be satisfied
+without blocking don't have to wait for the current download to
+complete. This is now done. I also want multi-threaded reads
+of gzip and freeze compressed tar files.
 
 =head2 The caveats...
 
@@ -160,7 +149,9 @@ may wish to download and look over the source yourself.
 
 =item *
 
-vf_ram (I<http://toronto.qenesis.com/Sam/vf_ram.gz>)
+vf_ram (I<http://toronto.qenesis.com/Sam/vf_ram.gz>) and
+its
+usage (I<http://toronto.qenesis.com/Sam/vf_ram.usage>)
 
 =item *
 
