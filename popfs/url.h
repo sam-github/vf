@@ -3,9 +3,15 @@
 //
 // $Id$
 // $Log$
+// Revision 1.2  1999/06/20 17:21:53  sam
+// added multiple inclusion protection
+//
 // Revision 1.1  1999/05/17 04:37:40  sam
 // Initial revision
 //
+
+#ifndef URL_H
+#define URL_H
 
 int UrlParseAccount(char* account, char** user, char** pass, char** host)
 {
@@ -37,4 +43,6 @@ int UrlParseAccount(char* account, char** user, char** pass, char** host)
 
 	return 1;
 }
+
+#endif
 
