@@ -4,6 +4,8 @@ and non-blocking generated a long list of possible changes, add them here.
 * Outright bugs
  - symlink paths are not being rewritten correctly: .../sl linked
    to 'dir/file' will work when in same directory as sl, not otherwise.
+ - mounting inside a path on another machine fails
+ - some tar files lack magic field, what to do?
 
 * Integrate with mount utility
  x now there is a mount_[ram/tar/tgz/pop].
@@ -53,7 +55,7 @@ and non-blocking generated a long list of possible changes, add them here.
 
 * Miscellany:
  x Move RAM file entity from vf_file to vf_ram.
- - Rewrite release target.
+ x Rewrite release target.
  x support sys/version message
 
 Status:
