@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.8  1999/06/18 16:48:06  sam
+// Made InitStat a protected member of the class that had the stat_ data.
+//
 // Revision 1.7  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -186,6 +189,23 @@ int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 
 	errno = ENOTSUP;
 	return -1;
+}
+
+void VFFileEntity::InitStat(mode_t mode)
+{
+	memset(&stat_, 0, sizeof stat_);
+
+	stat_.st_mode = mode | S_IFREG;
+	stat_.st_nlink = 1;
+
+	stat_.st_ouid = getuid();
+	stat_.st_ogid = getgid();
+
+	stat_.st_ftime =
+	  stat_.st_mtime =
+	    stat_.st_atime =
+	      stat_.st_ctime = time(0);
+
 }
 
 //
@@ -410,22 +430,5 @@ int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 	}
 
 	return ret;
-}
-
-void VFRamFileEntity::InitStat(mode_t mode)
-{
-	memset(&stat_, 0, sizeof stat_);
-
-	stat_.st_mode = mode | S_IFREG;
-	stat_.st_nlink = 1;
-
-	stat_.st_ouid = getuid();
-	stat_.st_ogid = getgid();
-
-	stat_.st_ftime =
-	  stat_.st_mtime =
-	    stat_.st_atime =
-	      stat_.st_ctime = time(0);
-
 }
 
