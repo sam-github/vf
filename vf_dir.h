@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/07/02 15:29:25  sam
+// added public accessors, information is useful to vf_tar
+//
 // Revision 1.10  1999/06/20 13:42:20  sam
 // Fixed problem with hash op[] inserting nulls, reworked the factory ifx,
 // fixed problem with modes on newly created files, cut some confusion away.
@@ -107,8 +110,20 @@ public:
 	bool Insert(const String& path, VFEntity* entity);
 	struct stat* Stat();
 
-private:
-	friend class VFDirOcb;
+	// Public Accessors (unused by vf framework)
+	int Entries () const
+	{
+		return map_.entries();
+	}
+
+	struct EntityNamePair;
+
+	EntityNamePair* EnPair(int index)
+	{
+		if(index >= map_.entries()) { return 0; }
+
+		return index_[index];
+	}
 
     // position -> entity/name map
 	struct EntityNamePair
@@ -123,6 +138,9 @@ private:
 		VFEntity* entity;
 		String name;
 	};
+
+private:
+	friend class VFDirOcb;
 
 	// Define our wrapper to avoid op[] adding null entries to the map,
 	// and so that we have a find that behaves the way I want.
