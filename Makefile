@@ -4,6 +4,9 @@
 
 VERSION=vf-$(shell cat Version)
 
+# customizable installation directory
+prefix	= /usr/local
+
 CXXFLAGS	= -w2 $(OFLAGS)
 OFLAGS		= -O -g
 LDFLAGS 	= -M -T1 $(OFLAGS)
@@ -14,7 +17,7 @@ INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
 SRC = $(wildcard *.cc)
 OBJ = vf_mgr.o vf_fdmap.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
 EXE = stat fifot
-VF	= ramfs tarfs popfs
+VF	= tar ramfs tgzfs popfs tarfs
 LIB = vf.lib
 DOC = vf.txt vf.html
 DEP = depends.mak
@@ -55,7 +58,13 @@ clean:
 empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort $(DEP)
 
-export: all
+install: build
+	cp tar/untar $(prefix)/bin
+	cp ramfs/vf_ram $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_ram mount_ram
+	cp tarfs/vf_tar $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_tar mount_tar
+	cp tgzfs/vf_tgz $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_tgz mount_tgz
+	cp popfs/vf_pop $(prefix)/bin; cd $(prefix)/bin; ln -fs vf_pop mount_pop
+	cd $(prefix)/bin; chown root:users vf_*; chmod u+s vf_*
 
 docs: vf.txt vf.html
 
@@ -96,8 +105,6 @@ docs: vf.txt vf.html
 # release targets
 .PHONY: release
 
-REXE = ramfs/vf_ram popfs/vf_pop tarfs/vf_tar
-
 release: docs
 	mkdir -p $(VERSION)
 	pax -w -f - < Manifest | (cd $(VERSION); tar -xf-)
@@ -105,17 +112,16 @@ release: docs
 	gzip release/$(VERSION).tar
 	mv release/$(VERSION).tar.gz release/$(VERSION).tgz
 	rm -Rf $(VERSION)
-	cp $(REXE) release/
-	wstrip -q release/vf_ram
-	wstrip -q release/vf_pop
-	wstrip -q release/vf_tar
-	use release/vf_ram > release/vf_ram.usage
-	use release/vf_pop > release/vf_pop.usage
-	use release/vf_tar > release/vf_tar.usage
-	gzip -f release/vf_ram release/vf_pop release/vf_tar
+	use mount_ram > release/mount_ram.usage
+	use mount_pop > release/mount_pop.usage
+	use mount_tar > release/mount_tar.usage
+	use mount_tgz > release/mount_tgz.usage
 	cp vf.html release/
 
 # $Log$
+# Revision 1.18  1999/12/05 01:51:40  sam
+# added install target, and tweaked release target
+#
 # Revision 1.17  1999/10/17 16:24:05  sam
 # changed name of makedeps to X11's name, and including usage messages
 # in the released website
