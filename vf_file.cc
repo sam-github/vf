@@ -4,6 +4,11 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.5  1999/04/11 06:41:37  sam
+// split FileEntity into a RamFileEntity and a base FileEntity that is used by
+// the FileOcb, turns out most of the FileEntity is reuseable, just the actual
+// read/write functions were specific to the RAM filesystem
+//
 // Revision 1.4  1998/04/28 07:22:53  sroberts
 // the sprintf of an entire file in the Write() log message was segving
 //
@@ -30,19 +35,6 @@
 //
 // VFFileEntity
 //
-
-VFFileEntity::VFFileEntity(mode_t mode) :
-	data_	(0),
-	dataLen_	(0),
-	fileSize_	(0)
-{
-	InitStat(mode);
-}
-
-VFFileEntity::~VFFileEntity()
-{
-	VFLog(3, "VFDirEntity::~VFFileEntity()");
-}
 
 VFOcb* VFFileEntity::Open(
 	const String& path,
@@ -122,6 +114,8 @@ int VFFileEntity::MkDir(
 
 bool VFFileEntity::Insert(const String& path, VFEntity* entity)
 {
+	(const char*) path; entity = entity;
+
 	errno = ENOTDIR;
 	return false;
 }
@@ -129,98 +123,6 @@ bool VFFileEntity::Insert(const String& path, VFEntity* entity)
 struct stat* VFFileEntity::Stat()
 {
 	return &stat_;
-}
-
-int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
-{
-	VFLog(2, "VFFileEntity::Write() size %ld, offset %ld len %ld size %ld",
-		nbytes, offset, dataLen_, fileSize_);
-
-	// grow the buffer if possible/necessary
-	if(offset + nbytes > dataLen_)
-	{
-		// for fast writes I should always allocate 2*dataLen_, and
-		// unallocate when fileSize_ is < dataLen_/4, for now I use the more
-		// memory conservative approach
-		char* b = (char*) realloc(data_, offset + nbytes);
-		if(b) { data_ = b; dataLen_ = offset + nbytes; }
-	}
-	// see if we can read any data into available space
-	if(offset >= dataLen_)
-	{
-		errno = ENOSPC;
-		return -1;
-	}
-	if(offset > fileSize_)
-	{
-		// offset past end of file, so zero data up to write point
-		memset(&data_[fileSize_], 0, offset - fileSize_);
-	}
-	if(dataLen_ - offset < nbytes)
-	{
-		// we can only partially fulfill the write request
-		nbytes = dataLen_ - offset;
-	}
-
-	// ready to read nbytes into the data buffer from the offset of the
-	// "data" part of the write message
-	size_t dataOffset = offsetof(struct _io_write, data);
-	unsigned ret = Readmsg(pid, dataOffset, &data_[offset], nbytes);
-
-	if(ret != -1)
-	{
-		VFLog(5, "VFFileEntity::Write() wrote \"%.*s\"", ret, &data_[offset]);
-
-		// update sizes if end of write is past current size
-		off_t end = offset + ret;
-		if(end > fileSize_) { fileSize_ = stat_.st_size = end; }
-	}
-
-	return ret;
-}
-
-int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
-{
-	VFLog(2, "VFFileEntity::Read() size %ld, offset %ld len %ld size %ld",
-		nbytes, offset, dataLen_, fileSize_);
-
-	// adjust nbytes if the read would be past the end of file
-	if(offset + nbytes > fileSize_)
-	{
-		nbytes = fileSize_ - offset;
-		if(nbytes < 0) { nbytes = 0; }
-	}
-
-	// ready to write nbytes from the data buffer to the offset of the
-	// "data" part of the read reply message
-	size_t dataOffset = offsetof(struct _io_read_reply, data);
-	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
-
-	if(ret != -1)
-	{
-		VFLog(5, "VFFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
-	}
-
-	return ret;
-}
-
-
-
-void VFFileEntity::InitStat(mode_t mode)
-{
-	memset(&stat_, 0, sizeof stat_);
-
-	stat_.st_mode = mode | S_IFREG;
-	stat_.st_nlink = 1;
-
-	stat_.st_ouid = getuid();
-	stat_.st_ogid = getgid();
-
-	stat_.st_ftime =
-	  stat_.st_mtime =
-	    stat_.st_atime =
-	      stat_.st_ctime = time(0);
-
 }
 
 //
@@ -283,6 +185,8 @@ int VFFileOcb::Read(pid_t pid, _io_read* req, _io_read_reply* reply)
 
 int VFFileOcb::Seek(pid_t pid, _io_lseek* req, _io_lseek_reply* reply)
 {
+	pid = pid;
+
 	off_t to = offset_;
 	if(req->whence == SEEK_SET)
 	{
@@ -342,11 +246,123 @@ int VFFileOcb::Chown()
 
 int VFFileOcb::ReadDir(pid_t pid, _io_readdir* req, _io_readdir_reply* reply)
 {
+	pid = pid; req = req; reply = reply;
+
 	return 0;
 }
 
 int VFFileOcb::RewindDir(pid_t pid, _io_rewinddir* req, _io_rewinddir_reply* reply)
 {
+	pid = pid; req = req; reply = reply;
+
 	return 0;
+}
+
+//
+// VFRamFileEntity
+//
+
+VFRamFileEntity::VFRamFileEntity(mode_t mode) :
+	data_	(0),
+	dataLen_	(0),
+	fileSize_	(0)
+{
+	InitStat(mode);
+}
+
+VFRamFileEntity::~VFRamFileEntity()
+{
+	VFLog(3, "VFDirEntity::~VFRamFileEntity()");
+
+	free(data_);
+}
+
+int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "VFRamFileEntity::Write() size %ld, offset %ld len %ld size %ld",
+		nbytes, offset, dataLen_, fileSize_);
+
+	// grow the buffer if possible/necessary
+	if(offset + nbytes > dataLen_)
+	{
+		// for fast writes I should always allocate 2*dataLen_, and
+		// unallocate when fileSize_ is < dataLen_/4, for now I use the more
+		// memory conservative approach
+		char* b = (char*) realloc(data_, offset + nbytes);
+		if(b) { data_ = b; dataLen_ = offset + nbytes; }
+	}
+	// see if we can read any data into available space
+	if(offset >= dataLen_)
+	{
+		errno = ENOSPC;
+		return -1;
+	}
+	if(offset > fileSize_)
+	{
+		// offset past end of file, so zero data up to write point
+		memset(&data_[fileSize_], 0, offset - fileSize_);
+	}
+	if(dataLen_ - offset < nbytes)
+	{
+		// we can only partially fulfill the write request
+		nbytes = dataLen_ - offset;
+	}
+
+	// ready to read nbytes into the data buffer from the offset of the
+	// "data" part of the write message
+	size_t dataOffset = offsetof(struct _io_write, data);
+	unsigned ret = Readmsg(pid, dataOffset, &data_[offset], nbytes);
+
+	if(ret != -1)
+	{
+		VFLog(5, "VFRamFileEntity::Write() wrote \"%.*s\"", ret, &data_[offset]);
+
+		// update sizes if end of write is past current size
+		off_t end = offset + ret;
+		if(end > fileSize_) { fileSize_ = stat_.st_size = end; }
+	}
+
+	return ret;
+}
+
+int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "VFRamFileEntity::Read() size %ld, offset %ld len %ld size %ld",
+		nbytes, offset, dataLen_, fileSize_);
+
+	// adjust nbytes if the read would be past the end of file
+	if(offset > fileSize_) {
+			nbytes = 0;
+	} else if(offset + nbytes > fileSize_) {
+		nbytes = fileSize_ - offset;
+	}
+
+	// ready to write nbytes from the data buffer to the offset of the
+	// "data" part of the read reply message
+	size_t dataOffset = offsetof(struct _io_read_reply, data);
+	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
+
+	if(ret != -1) {
+		VFLog(5, "VFRamFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
+	}
+
+	return ret;
+}
+
+void VFRamFileEntity::InitStat(mode_t mode)
+{
+	memset(&stat_, 0, sizeof stat_);
+
+	stat_.st_mode = mode | S_IFREG;
+	stat_.st_nlink = 1;
+
+	stat_.st_ouid = getuid();
+	stat_.st_ogid = getgid();
+
+	stat_.st_ftime =
+	  stat_.st_mtime =
+	    stat_.st_atime =
+	      stat_.st_ctime = time(0);
+
 }
 

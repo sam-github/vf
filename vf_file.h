@@ -4,6 +4,11 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1999/04/11 06:41:37  sam
+// split FileEntity into a RamFileEntity and a base FileEntity that is used by
+// the FileOcb, turns out most of the FileEntity is reuseable, just the actual
+// read/write functions were specific to the RAM filesystem
+//
 // Revision 1.3  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -23,9 +28,6 @@
 class VFFileEntity : public VFEntity
 {
 public:
-	VFFileEntity(mode_t mode);
-	~VFFileEntity();
-
 	VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply);
 	int Stat(const String& path, _io_open* req, _io_fstat_reply* reply);
 	int ChDir(const String& path, _io_open* req, _io_open_reply* reply);
@@ -35,18 +37,12 @@ public:
 	bool Insert(const String& path, VFEntity* entity);
 	struct stat* Stat();
 
-	// used by the Ocb
-	int Write(pid_t pid, size_t nbytes, off_t offset);
-	int Read(pid_t pid, size_t nbytes, off_t offset);
+	// API extensions for use by VFFileOcb
+	virtual int Write(pid_t pid, size_t nbytes, off_t offset) = 0;
+	virtual int Read(pid_t pid, size_t nbytes, off_t offset) = 0;
 
-private:
-	char* data_; // pointer to buffer
-	off_t dataLen_;  // length of data buffer
-	off_t fileSize_; // size of file data (may be less than dataLen_)
-
+protected:
 	struct stat stat_;
-
-	void InitStat(mode_t mode);
 };
 
 class VFFileOcb : public VFOcb
@@ -69,6 +65,23 @@ private:
 	VFFileEntity* file_;
 
 	off_t offset_;
+};
+
+class VFRamFileEntity : public VFFileEntity
+{
+public:
+	VFRamFileEntity(mode_t mode);
+	~VFRamFileEntity();
+
+	int Write(pid_t pid, size_t nbytes, off_t offset);
+	int Read(pid_t pid, size_t nbytes, off_t offset);
+
+private:
+	char* data_; // pointer to buffer
+	off_t dataLen_;  // length of data buffer
+	off_t fileSize_; // size of file data (may be less than dataLen_)
+
+	void InitStat(mode_t mode);
 };
 
 #endif
