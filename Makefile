@@ -5,9 +5,10 @@
 VERSION=vf-$(shell cat Version)
 
 # privity 1 to make kernel calls (__get_fd, __init_fd, etc.)
-CXXFLAGS = -w2 -g -T1
-OFLAGS = -O
-LDFLAGS = -M $(CXXFLAGS) -l vf.lib
+CXXFLAGS	= -w2 $(OFLAGS)
+OFLAGS		= -O -g
+LDFLAGS 	= -M -T1 $(OFLAGS)
+LDLIBS		= -l vf.lib
 POD2HTMLFLAGS = --title="A C++ Framework for QNX Virtual Filesystems"
 
 INC = vf.h vf_mgr.h vf_dir.h vf_file.h vf_syml.h
@@ -16,22 +17,21 @@ OBJ = vf_mgr.o vf_dir.o vf_file.o vf_syml.o vf_log.o vf.o
 EXE = vf_ram
 VF	= tarfs popfs
 LIB = vf.lib
+DOC = vf.txt vf.html
 DEP = depends.mak
-ALL = deps $(LIB) $(EXE)
+ALL = $(LIB) $(EXE) $(DOC)
 
 # default targets
 .PHONY: all vf deps
 
-default: all
+default: all vf
 
-build: deps $(LIB) $(EXE)
+all: $(ALL)
 
-all: build vf
+docs: $(DOC)
 
 vf: $(LIB)
 	for d in $(VF); do $(MAKE) -C $$d; done
-
-deps: $(DEP)
 
 # special targets
 
@@ -47,14 +47,14 @@ $(OBJ): $(INC)
 
 -include $(DEP)
 
-$(DEP): $(SRC) $(INC)
-	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
+deps:
+	makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $(DEP)
 
 clean:
 	rm -f *.o *.err core *.dmp *.log
 
 empty: clean
-	rm -f $(ALL) *.dbg *.map *.map.sort
+	rm -f $(ALL) *.dbg *.map *.map.sort $(DEP)
 
 export: all
 
@@ -79,21 +79,21 @@ stop:
 
 # rule forcing run of usemsg after linking
 %: %.o
-	$(LINK.o) -o $@ $^ $(LDLIBS)
+	$(LINK.o) -o $@ $< $(LDLIBS)
 	-usemsg -c $@ $@.c*
 	chown root $@
 	chmod u+s $@
 	-sort $@.map > $@.map.sort
 
 %: %.c
-	$(LINK.c) -o $@ $< $(LDFLAGS)
+	$(LINK.c) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
 	-usemsg $@ $<
 	chown root $@
 	chmod u+s $@
 
 %: %.cc
-	$(LINK.cc) -o $@ $< $(LDFLAGS)
+	$(LINK.cc) -o $@ $< $(LDLIBS)
 	$(RM) $@.o
 	-usemsg $@ $<
 	chown root $@
@@ -128,6 +128,9 @@ release: docs
 	cp vf.html release/
 
 # $Log$
+# Revision 1.13  1999/07/19 15:42:32  sam
+# think I've worked out the kinks in the build...
+#
 # Revision 1.12  1999/07/14 17:17:47  sam
 # documentation built into the release now
 #
