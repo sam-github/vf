@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/12/05 06:11:45  sam
+// converted to use Path instead of String
+//
 // Revision 1.2  1999/11/25 03:56:16  sam
 // prelimnary testing ok, but looks like a problem with String temps...
 //
@@ -69,13 +72,14 @@ public:
 		}
 		return entity;
 	}
-	VFEntity* CreateLink(const String& linkto)
+	VFEntity* CreateLink(const Path& linkto)
 	{
 		VFEntity* entity =
-			new VFSymLinkEntity(uid_, gid_, mask_, linkto);
+			new VFSymLinkEntity(uid_, gid_, mask_, linkto.c_str());
+
 		if(!entity) {
 			VFLog(0, "creating link entity to '%s' failed: [%d] %s",
-				(const char*)linkto, errno, strerror(errno));
+				linkto.c_str(), errno, strerror(errno));
 			exit(0);
 		}
 		return entity;
@@ -217,7 +221,7 @@ void main(int argc, char* argv[])
 			break;
 
 		case S_IFREG: {
-			String to(tarOpt);
+			Path to(tarOpt);
 
 			int e = root->Insert(tar.Path(), factory->CreateFile(tar));
 		  }	break;
