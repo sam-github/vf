@@ -21,6 +21,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.2  1999/11/25 04:22:02  sam
+// *** empty log message ***
+//
 // Revision 1.1  1999/11/24 03:43:12  sam
 // Initial revision
 //
@@ -141,25 +144,23 @@ int main(int argc, char* argv[])
 			tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
 	}
 
-	do
-	{
+	do {
 		DBG("next: '%s'\n", tar.Path());
+
+		struct stat stat;
+		tar.Record()->Stat(&stat);
 
 		switch(cOpt)
 		{
-/*
+	/*
 		case 's': {
-			const struct stat* stat = it.Stat();
 			printf("untar: it path %s size %d user %s group %s link %s\n",
-				it.Path(), stat->st_size, it.User(), it.Group(), it.Link());
+				tar.Path(), stat.st_size, it.User(), it.Group(), it.Link());
 			printf("untar: it mode %#x perm %#o uid %d gid %d\n",
 				stat->st_mode, 0777&stat->st_mode, stat->st_uid, stat->st_gid);
 		  }	break;
-*/
+	*/
 		case 'l': {
-			struct stat stat;
-			tar.Record()->Stat(&stat);
-
 		 	int type;
 		 	if(S_ISREG(stat.st_mode)) {
 		 		type = 'f';
@@ -193,6 +194,9 @@ int main(int argc, char* argv[])
 				ERR("read - %s failed: [%d] %s\n",
 					mp->ErrorInfo(), mp->ErrorNo(), mp->ErrorStr());
 			}
+
+			delete mp;
+
 		  }	break;
 
 		}
