@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.4  1999/06/21 12:48:02  sam
+// caches mail on disk instead of file (by default), and reports a sys version
+//
 // Revision 1.3  1999/06/20 17:21:53  sam
 // now conduct transactions with server to prevent timeouts
 //
@@ -35,6 +38,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <strstream.h>
+#include <fstream.h>
 #include <pwd.h>
 #include <grp.h>
 
@@ -127,11 +131,12 @@ int PopFile::Read(pid_t pid, size_t nbytes, off_t offset)
 // PopDir
 //
 
-PopDir::PopDir(const char* host, const char* user, const char* pass) :
+PopDir::PopDir(const char* host, const char* user, const char* pass, int mbuf) :
 	VFDirEntity(0500),
 	host_(host),
 	user_(user),
-	pass_(pass)
+	pass_(pass),
+	mbuf_(mbuf)
 {
 	pop3 pop;
 
@@ -157,6 +162,10 @@ PopDir::PopDir(const char* host, const char* user, const char* pass) :
 
 istream* PopDir::Retr(int msg)
 {
+	iostream* mail = Stream();
+
+	if(!mail) { return 0; }
+
 	pop3 pop;
 
 	if(!Connect(pop))
@@ -164,17 +173,6 @@ istream* PopDir::Retr(int msg)
 		errno = EHOSTDOWN;
 
 		return 0;
-	}
-
-	strstream* mail = new strstream;
-
-	if(!mail)
-	{
-		VFLog(0, "out of memory");
-
-		errno = ENOMEM;
-
-		goto disconnect;
 	}
 
 	if(!pop->retr(msg, mail))
@@ -186,15 +184,43 @@ istream* PopDir::Retr(int msg)
 		mail = 0;
 
 		errno = ECONNABORTED;
-
-		goto disconnect;
 	}
 
-disconnect:
 	Disconnect(pop);
 
 	return mail;
 }
+
+iostream* PopDir::Stream() const
+{
+	iostream* s = 0;
+
+	if(mbuf_)
+	{
+		s = new strstream;
+	}
+	else
+	{
+		const char* n = tmpnam(0);
+		s = new fstream(n, ios::in|ios::out, 0600);
+		unlink(n);
+	}
+
+	if(!s)
+	{
+		VFLog(0, "out of memory");
+		errno = ENOMEM;
+	}
+
+	if(!s->good())
+	{
+		delete s;
+		s = 0;
+	}
+
+	return s;
+}
+
 
 int PopDir::Connect(pop3& pop)
 {
@@ -202,13 +228,13 @@ int PopDir::Connect(pop3& pop)
 
 	if(fail) {
 		VFLog(0, "connect to %s failed: [%d] %s\n",
-			host_, fail, strerror(fail));
+			(const char*)host_, fail, strerror(fail));
 		return 0;
 	}
 
 	 if(!pop->checkconnect()) {
 		VFLog(0, "connect to %s failed: %s",
-			host_, pop->response() + strlen("-ERR "));
+			(const char*)host_, pop->response() + strlen("-ERR "));
 		return 0;
 	}
 
@@ -243,17 +269,21 @@ int PopDir::Disconnect(pop3& pop)
 %C - a POP3 virtual filesystem
 
 usage: vf_pop3 [-hv] [-p vf] user[:passwd]@hostname
-    -h   print help message
-    -v   increse the verbosity level
-    -p   path of virtual file system to create, default is the base
-         name of the file, without any extension
+    -h   Print this message and exit.
+    -v   Increase the verbosity level, default is 0.
+    -p   Path to place virtual file system at, default is ./'user@hostname'.
+    -m   Buffer read mail messages in memory, default is a temp file
+         opened in /tmp with perms 0600 and immediately unlinked after
+         being opened.
+    -d   Don't become a daemon, default is to fork into the background after
+         prompting for a password (if necessary).
 
-Mounts the specified pop3 account as a virtual filesystem at 'vf'. The
-password is optional, probably shouldn't be specified on the command
-line (for security reasons), and will be prompted for if not supplied.
-Messages on the server can be read or deleted. Deleted mail will actually
-be deleted on server only on normal exit, caused by doing a rmdir on the
-vfsys path (causing vf_pop3 to exit gracefully).
+Mounts the specified pop3 account as a virtual filesystem at 'vf'.
+
+The password is optional, probably shouldn't be specified on the command
+line for security reasons, and will be prompted for if not supplied.
+
+Doing a rmdir on the path 'vf' will cause vf_pop to exit.
 #endif
 
 int		vOpt		= 0;
@@ -262,10 +292,12 @@ char*	accountOpt	= 0;
 char*	userOpt		= 0;
 char*	passOpt		= 0;
 char*	hostOpt		= 0;
+int		mbufOpt		= 0;
+int		dOpt		= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvp:")) != -1; ) {
+	for(int c; (c = getopt(argc, argv, "hvp:md")) != -1; ) {
 		switch(c) {
 		case 'h':
 			print_usage(argv);
@@ -278,6 +310,14 @@ int GetOpts(int argc, char* argv[])
 
 		case 'p':
 			pathOpt = optarg;
+			break;
+
+		case 'm':
+			mbufOpt = 1;
+			break;
+
+		case 'd':
+			dOpt = 1;
 			break;
 
 		default:
@@ -314,19 +354,36 @@ int GetOpts(int argc, char* argv[])
 
 void main(int argc, char* argv[])
 {
-	VFManager* vfmgr = new VFManager;
+	VFVersion vfver("vf_pop", 1.2);
+	VFManager vfmgr(vfver);
 
 	VFLevel("vf_pop", vOpt);
 
 	GetOpts(argc, argv);
 
-	VFEntity* root = new PopDir(hostOpt, userOpt, passOpt);
+	VFEntity* root = new PopDir(hostOpt, userOpt, passOpt, mbufOpt);
 
-	if(!vfmgr->Init(root, pathOpt, vOpt)) {
+	if(!dOpt)
+	{
+		// go into background
+
+		switch(fork())
+		{
+		case 0:
+			break;
+		case -1:
+			VFLog(0, "fork failed: [%d] %s", errno, strerror(errno));
+			exit(1);
+		default:
+			exit(0);
+		}
+	}
+
+	if(!vfmgr.Init(root, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
 		exit(1);
 	}
 
-	vfmgr->Run();
+	vfmgr.Run();
 }
 
