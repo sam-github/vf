@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/11/25 03:56:16  sam
+// prelimnary testing ok, but looks like a problem with String temps...
+//
 // Revision 1.1  1999/11/24 03:54:01  sam
 // Initial revision
 //
@@ -37,7 +40,6 @@
 
 #include <vf_log.h>
 
-#include "vf_tgz.h"
 #include "vf_tgzfile.h"
 
 //
@@ -46,12 +48,15 @@
 
 char VFTgzFileEntity::buffer_[BUFSIZ];
 
-VFTgzFileEntity::VFTgzFileEntity(const TarUntar& untar, off_t size) :
+VFTgzFileEntity::VFTgzFileEntity(Tar::Reader& tar) :
 	VFFileEntity(getuid(), getgid(), 0440),
-	untar_	(untar),
-	cache_	(-1)
+	tar_	(tar),
+	cache_	(-1),
+	path_	(Tar::StrDup(tar.Path()))
 {
-	size = size;
+	struct stat stat;
+	tar.Record()->Stat(&stat);
+	info_.size = stat.st_size;
 }
 
 VFTgzFileEntity::~VFTgzFileEntity()
@@ -59,6 +64,7 @@ VFTgzFileEntity::~VFTgzFileEntity()
 	if(cache_ != -1) {	
 		close(cache_);
 	}
+	delete[] path_;
 }
 
 int VFTgzFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
@@ -77,15 +83,27 @@ int VFTgzFileEntity::Read(pid_t pid, size_t nbytes, off_t* offset)
 		}
 		unlink(n);
 
-		untar_.Open();
+		if(!tar_.Open(path_)) {
+			VFLog(0, "tar.Open - %s failed: " VFERRF,
+				tar_.ErrorInfo(), VFERR(tar_.ErrorNo()));
+			return tar_.ErrorNo();
+		}
+		Tar::Member* tm = tar_.Member();
+		if(!tm) {
+			VFLog(0, "tar.Member() - %s failed: " VFERRF,
+				tar_.ErrorInfo(), VFERR(tar_.ErrorNo()));
+			return tar_.ErrorNo();
+		}
 		int b = 0;
-		while((b = untar_.Read(buffer_, sizeof(buffer_))) > 0) {
+		while((b = tm->Read(buffer_, sizeof(buffer_))) > 0) {
 			if(write(cache_, buffer_, b) == -1) {
 				int e = errno;
 				VFLog(0, "write cache failed: " VFERRF, VFERR(e));
 				return e;
 			}
 		}
+		delete tm;
+		tar_.Close();
 	}
 
 	assert(cache_ != -1);

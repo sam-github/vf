@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/11/25 03:56:16  sam
+// prelimnary testing ok, but looks like a problem with String temps...
+//
 // Revision 1.1  1999/11/24 03:54:01  sam
 // Initial revision
 //
@@ -38,6 +41,8 @@
 #include <vf_syml.h>
 #include <vf_log.h>
 
+#include <tar/tararch.h>
+
 #include "vf_tgzfile.h"
 
 //
@@ -55,9 +60,9 @@ public:
 		gid_	= getgid();
 	}
 
-	VFEntity* CreateFile(const TarUntar& untar, off_t size)
+	VFEntity* CreateFile(Tar::Reader& tar)
 	{
-		VFEntity* entity = new VFTgzFileEntity(untar, size);
+		VFEntity* entity = new VFTgzFileEntity(tar);
 		if(!entity) {
 			VFLog(0, "creating file entity  failed: [%d] %s", VFERR(errno));
 			exit(0);
@@ -76,9 +81,9 @@ public:
 		return entity;
 	}
 
-	VFEntity* AutoDir()
+	VFDirEntity* AutoDir()
 	{
-		return new VFDirEntity(uid_, gid_, 0777 & ~mask_, this);
+		return new VFDirEntity(uid_, gid_, 0555 & ~mask_, this);
 	}
 
 private:
@@ -99,12 +104,12 @@ usage: vf_tgz [-hvde] file [vf]
     -v   Increase the verbosity level.
     -d   Don't become a daemon, default is to fork into the background after
          reading the tar file.
-    -e   Elide top-level directory if there is only one and use that name as
-         the path 'vf' if the -p option was not specified.
+    -e   Elide top-level directory if there is only one, and use it's
+         name for the mount point if 'vf' is not specified.
 
 Mounts 'file' as a virtual (read-only) filesystem at 'vf', which defaults
 to the base name of the file, without any extensions. The file system can
-be unmounted by doing a umount or rmdir on the vfsys path (causing vf_tgz
+be unmounted by doing a umount on the vfsys path (causing vf_tgz
 to exit).
 
 It isn't clear what the correct way of dealing with absolute paths is. The
@@ -127,7 +132,6 @@ that leading element. It may become the default because I use it almost
 all the time.
 #endif
 
-
 //
 // vf_tgz: globals
 //
@@ -140,8 +144,10 @@ char*	tarOpt	= 0;
 
 int GetOpts(int argc, char* argv[])
 {
-	for(int c; (c = getopt(argc, argv, "hvdet:")) != -1; ) {
-		switch(c) {
+	for(int c; (c = getopt(argc, argv, "hvdet:")) != -1; )
+	{
+		switch(c)
+		{
 		case 'h':
 			print_usage(argv);
 			exit(0);
@@ -167,7 +173,8 @@ int GetOpts(int argc, char* argv[])
 		}
 	}
 
-	if(!(tarOpt = argv[optind++])) {
+	if(!(tarOpt = argv[optind++]))
+	{
 		fprintf(stderr, "no tarfile specified!\n");
 		exit(1);
 	}
@@ -175,36 +182,6 @@ int GetOpts(int argc, char* argv[])
 	pathOpt = argv[optind] ? argv[optind] : 0;
 
 	return 0;
-}
-
-static int ParseUntarOutput(ipipestream& ip, char& type, String& file)
-{
-	strstream ss;
-
-	ip.get(*ss.rdbuf(), '\n');
-	ip.get();
-
-	ss << '\0';
-
-	if(!ip.good()) { return 0; }
-
-	// Untar format is
-	//  'x: <filename>' with x one of 'f', 'd', 'l', and
-	//  '-> <filename>' follows a 'l' line to give the link target,
-	// so do this:
-
-	char* str = ss.str();
-
-	if(strlen(str) < 4) {
-		VFLog(0, "untar returned a short line");
-		exit(1);
-	}
-	type = str[0];
-	file = str+3;
-
-	delete[] str;
-
-	return 1;
 }
 
 void main(int argc, char* argv[])
@@ -216,55 +193,50 @@ void main(int argc, char* argv[])
 
 	GetOpts(argc, argv);
 
-	mode_t mask = umask(0); umask(mask);
-
 	VFTgzEntityFactory* factory = new VFTgzEntityFactory;
-	VFDirEntity* root =
-		new VFDirEntity(getuid(), getgid(), 0555 & ~mask, factory);
+	VFDirEntity* root = factory->AutoDir();
 
-	VFEntity* top = 0;
-
-	strstream cmd;
-	cmd << "untar -z -l " << tarOpt << '\0';
-	ipipestream ip(cmd.str());
-
-	char	type;
-	String	file;
-	while(ParseUntarOutput(ip, type, file))
+	Tar::Reader tar(tarOpt, Tar::Reader::Method('g'));
+	if(!tar.Open())
 	{
-		VFLog(2, "untar -> type %c '%s'", type, (const char*)file);
+		VFLog(0, "Reader::Open() said %s failed: [%d] %s",
+			tar.ErrorInfo(), tar.ErrorNo(), tar.ErrorStr());
+		exit(1);
+	}
+
+	do {
+		VFLog(2, "next: %s", tar.Path());
+
+		struct stat stat;
+		tar.Record()->Stat(&stat);
+		int type = S_IFMT & stat.st_mode;
 
 		switch(type)
 		{
-		case 'd': // don't bother with these for now
+		case S_IFDIR: // don't bother with these for now
 			break;
 
-		case 'f': {
+		case S_IFREG: {
 			String to(tarOpt);
 
-			TarUntar untar(to, file, TarUntar::GUESS);
-			//TarUntar untar(tarOpt, file, TarUntar::GUESS);
-
-			int e = root->Insert(file, factory->CreateFile(untar, 0));
+			int e = root->Insert(tar.Path(), factory->CreateFile(tar));
 		  }	break;
 
-		case 'l': {
-			char	minus;
-			String	linkto;
-			if(!ParseUntarOutput(ip, minus, linkto)) {
-				VFLog(0, "link '%s' has no target", (const char*)file);
-				exit(1);
-			}
-			int e = root->Insert(file, factory->CreateLink(linkto));
+		case S_IFLNK: {
+			int e = root->Insert(tar.Path(), factory->CreateLink(tar.LinkTo()));
 		  }	break;
 
 		default:
-			VFLog(0, "failed to parse untar output: invalid type '%c'",
-				type);
+			VFLog(1, "unknown type: %#x, member '%s'",
+				type, tar.Path());
 			exit(1);
 		}
-		file = "";
 	}
+	while(tar.Next());
+
+	tar.Close();
+
+	VFEntity* top = root;
 
 	// check if there is only one top-level directory, and elide it if so
 	if(eOpt && root->Entries() == 1)
@@ -273,7 +245,7 @@ void main(int argc, char* argv[])
 		
 		if(S_ISDIR(pair->entity->Info()->mode))
 		{
-			delete root;
+			delete top;
 			top = pair->entity;
 		}
 		if(!pathOpt)
@@ -284,12 +256,8 @@ void main(int argc, char* argv[])
 		}
 	}
 
-	if(!top)
+	if(!pathOpt)
 	{
-		top = root;
-	}
-
-	if(!pathOpt) {
 		char path[_MAX_PATH];
 		char ext[_MAX_EXT];
 		_splitpath(tarOpt, 0, 0, path, ext);

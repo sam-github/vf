@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.2  1999/11/25 03:56:16  sam
+// prelimnary testing ok, but looks like a problem with String temps...
+//
 // Revision 1.1  1999/11/24 03:54:01  sam
 // Initial revision
 //
@@ -28,23 +31,21 @@
 #define VF_TGZFILE_H
 
 #include <sys/types.h>
-
 #include <vf_file.h>
-
-#include <tarfs/tar_untar.h>
+#include <tar/tararch.h>
 
 class VFTgzFileEntity : public VFFileEntity
 {
 public:
-	VFTgzFileEntity(const TarUntar& untar, off_t size);
+	VFTgzFileEntity(Tar::Reader& tar);
 	~VFTgzFileEntity();
 
 	int Read(pid_t pid, size_t nbytes, off_t* offset);
 
 private:
-	TarUntar	untar_;
-
+	Tar::Reader& tar_;
 	int		cache_;
+	char*	path_;
 
 	static char buffer_[];
 };
