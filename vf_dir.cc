@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.11  1999/04/30 01:50:57  sam
+// Insert() will now create subdirectories if the directory has a factory.
+//
 // Revision 1.10  1999/04/28 03:27:49  sam
 // Stamped sources with the GPL.
 //
@@ -341,19 +344,28 @@ bool VFDirEntity::Insert(const String& path, VFEntity* entity)
 
 		return true;
 	}
+
 	// there is a tail, so we need to insert into a subdirectory
 
 	VFEntity* sub = 0;
 
-	// find the subdirectory to insert into
-	if(!map_.contains(lead))
+	// create the subdirectory to insert into, if necessary and possible
+	if(!map_.contains(lead) && factory_)
 	{
+		sub = factory_->NewDir();
+
+		if(sub && !Insert(lead, sub)) {
+			delete sub;
+			return false;
+		}
+	}
+
+	// find the subdirectory to insert into
+	sub = map_[lead];
+	if(!sub) {
 		errno = ENOENT;
 		return false;
 	}
-
-	sub = map_[lead];
-	assert(sub);
 
 	return sub->Insert(tail, entity);
 }
