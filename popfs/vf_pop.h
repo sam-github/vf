@@ -20,6 +20,11 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.5  1999/08/09 15:19:38  sam
+// Multi-threaded downloads! Pop servers usually lock the maildrop, so concurrent
+// downloads are not possible, but stats and reads of already downloaded mail
+// do not block on an ongoing download!
+//
 // Revision 1.4  1999/08/09 09:27:43  sam
 // started to multi-thread, but fw didn't allow blocking, checking in to fix fw
 //
@@ -43,6 +48,7 @@
 #include <vf_dir.h>
 #include <vf_file.h>
 #include <vf_log.h>
+#include <vf_fifo.h>
 
 #include "url.h"
 
@@ -54,47 +60,87 @@ public:
 	VFPopFile(int msg, VFPop& pop, int size);
 	~VFPopFile();
 
-	int Stat(const String* path, _io_open* req, _io_fstat_reply* reply);
-	int ReadLink(const String& path, _fsys_readlink* req, _fsys_readlink_reply* reply);
+	// These aren't implemented yet, I'm going to try and have the files
+	// look like links to lstat(), but not to cat and vi, so I can reply
+	// to readlink() with a subject/from field...
+	int Stat(pid_t pid, const String* path, int lstat); // XXX
+	int ReadLink(pid_t pid, const String& path); // XXX
 
-	int Write(pid_t pid, size_t nbytes, off_t offset);
-	int Read(pid_t pid, size_t nbytes, off_t offset);
+	int Read(pid_t pid, size_t nbytes, off_t* offset);
+
+	void Data(istream* data);
 
 private:
+	int QueueRead(pid_t pid, int nbytes, off_t* offset);
+	int ReplyRead(pid_t pid, int nbytes, off_t* offset);
+
 	VFPop&		pop_;
 	int			msg_;
 	istream*	data_;
 	int			size_;
 
 	char*		description_;
+
+	struct ReadRequest : public VFFifo<ReadRequest>::Link
+	{
+		ReadRequest(pid_t pid, int nbytes, off_t* offset) :
+			pid(pid), nbytes(nbytes), offset(offset) {}
+
+		pid_t	pid;
+		int		nbytes;
+		off_t*	offset;
+	};
+
+	VFFifo<ReadRequest>	readq_;
 };
 
 class VFPop : public VFManager
 {
 public:
-	VFPop(const char* host, const char* user, const char* pass, int mbuf);
+	VFPop(const char* host, const char* user, const char* pass, int mbuf, int sync);
 
 	void Run(const char* mount, int verbosity);
 
-	istream* Retr(int msg, VFPopFile* file);
+	int Service(pid_t pid, VFMsg* msg);
 
-	int Service(pid_t pid, VFIoMsg* msg);
-
-	static iostream* ERROR;
-	static iostream* PAUSE;
+	int Retr(int msg, VFPopFile* file, istream** str);
 
 private:
-	int Connect(pop3& pop);
-	int Disconnect(pop3& pop);
-
-	iostream* Stream() const;
-
 	VFDirEntity root_;
 
 	String	host_;
 	String	user_;
 	String	pass_;
 	int		mbuf_;
+	int		sync_;
+	pid_t	child_;
+
+	static pid_t sigproxy_;
+
+	struct RetrRequest : public VFFifo<RetrRequest>::Link
+	{
+		RetrRequest(int msg, VFPopFile* file, iostream* mail) :
+			msg(msg), file(file), mail(mail) {}
+
+		int			msg;
+		VFPopFile*	file;
+		iostream*	mail;
+	};
+
+	VFFifo<RetrRequest>	retrq_;
+
+	int SyncRetr	(int msg, istream** str);
+	int AsyncRetr	();
+	int	GetMail		(int msg, ostream* mail);
+
+	iostream* Stream() const;
+
+	int Connect(pop3& pop);
+	int Disconnect(pop3& pop);
+
+	static void SigHandler(int signo);
+
+
 };
 
 #endif
