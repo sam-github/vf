@@ -4,7 +4,6 @@
 
 VERSION=vf-$(shell cat Version)
 
-# privity 1 to make kernel calls (__get_fd, __init_fd, etc.)
 CXXFLAGS	= -w2 $(OFLAGS)
 OFLAGS		= -O -g
 LDFLAGS 	= -M -T1 $(OFLAGS)
@@ -48,7 +47,7 @@ $(OBJ): $(INC)
 -include $(DEP)
 
 deps:
-	makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $(DEP)
+	makedepend -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $(DEP)
 
 clean:
 	rm -f *.o *.err core *.dmp *.log
@@ -97,6 +96,8 @@ docs: vf.txt vf.html
 # release targets
 .PHONY: release
 
+REXE = ramfs/vf_ram popfs/vf_pop tarfs/vf_tar
+
 release: docs
 	mkdir -p $(VERSION)
 	pax -w -f - < Manifest | (cd $(VERSION); tar -xf-)
@@ -104,14 +105,21 @@ release: docs
 	gzip release/$(VERSION).tar
 	mv release/$(VERSION).tar.gz release/$(VERSION).tgz
 	rm -Rf $(VERSION)
-	cp vf_ram popfs/vf_pop tarfs/vf_tar release/
+	cp $(REXE) release/
 	wstrip -q release/vf_ram
 	wstrip -q release/vf_pop
 	wstrip -q release/vf_tar
+	use release/vf_ram > release/vf_ram.usage
+	use release/vf_pop > release/vf_pop.usage
+	use release/vf_tar > release/vf_tar.usage
 	gzip -f release/vf_ram release/vf_pop release/vf_tar
 	cp vf.html release/
 
 # $Log$
+# Revision 1.17  1999/10/17 16:24:05  sam
+# changed name of makedeps to X11's name, and including usage messages
+# in the released website
+#
 # Revision 1.16  1999/08/09 15:12:51  sam
 # To allow blocking system calls, I refactored the code along the lines of
 # QSSL's iomanager2 example, devolving more responsibility to the entities,
