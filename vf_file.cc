@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.9  1999/06/20 10:05:19  sam
+// fixed buffer overflow problems with large files and verbose debug messages
+//
 // Revision 1.8  1999/06/18 16:48:06  sam
 // Made InitStat a protected member of the class that had the stat_ data.
 //
@@ -398,7 +401,9 @@ int VFRamFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
 
 	if(ret != -1)
 	{
-		VFLog(5, "VFRamFileEntity::Write() wrote \"%.*s\"", ret, &data_[offset]);
+		VFLog(5, "VFRamFileEntity::Write() wrote \"%.*s\"",
+			__max(ret, 20),
+			&data_[offset]);
 
 		// update sizes if end of write is past current size
 		off_t end = offset + ret;
@@ -426,7 +431,9 @@ int VFRamFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 	unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
 
 	if(ret != -1) {
-		VFLog(5, "VFRamFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
+		VFLog(5, "VFRamFileEntity::Read() read \"%.*s\"",
+			__max(ret, 20),
+			&data_[offset]);
 	}
 
 	return ret;
