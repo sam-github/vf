@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.3  1998/03/19 07:41:25  sroberts
+// implimented dir stat, open, opendir, readdir, rewinddir, close
+//
 // Revision 1.2  1998/03/15 22:07:03  sroberts
 // added definitions for VFOcb and VFEntity
 //
@@ -30,32 +33,47 @@
 // forward references
 class VFEntity;
 class VFOcb;
+class VFManager;
+class VFOcbMap;
 
 class VFEntity
 {
 public:
-	virtual VFOcb* Open(const String& path, struct _io_open* req, struct _io_open_reply* reply) = 0;
-	virtual struct stat* Stat(const String& path, struct _io_open* req, struct _io_open_reply* reply) = 0;
-	virtual int Chdir() = 0;
+	virtual ~VFEntity() = 0;
+
+	virtual VFOcb* Open(const String& path, _io_open* req, _io_open_reply* reply) = 0;
+	virtual int Stat(const String& path, _io_open* req, _io_fstat_reply* reply) = 0;
+	virtual int Chdir(const String& path, _io_open* req, _io_open_reply* reply) = 0;
 	virtual int Unlink() = 0;
 
 	virtual bool Insert(const String& path, VFEntity* entity) = 0;
+	virtual struct stat* Stat() = 0;
 };
 
 class VFOcb
 {
 public:
-	virtual int Close();
-	virtual int Stat();
-	virtual int Read();
-	virtual int Write();
-	virtual int Seek();
-	virtual int Chmod();
-	virtual int Chown();
+	VFOcb();
+	virtual ~VFOcb() = 0;
 
-	virtual int DirRead();
-	virtual int DirRewind();
+	virtual int Stat() = 0;
+	virtual int Read() = 0;
+	virtual int Write() = 0;
+	virtual int Seek() = 0;
+	virtual int Chmod() = 0;
+	virtual int Chown() = 0;
+
+	virtual int ReadDir(_io_readdir* req, _io_readdir_reply* reply) = 0;
+	virtual int RewindDir(_io_rewinddir* req, _io_rewinddir_reply* reply) = 0;
+
+private:
+	friend class VFOcbMap;
+
+	void Refer() { refCount_++; }
+	void Unfer() { refCount_--; if(refCount_ <= 0) delete this; }
+	int refCount_;
 };
+
 
 #endif
 
