@@ -4,6 +4,9 @@
 // Copyright (c) 1998, Sam Roberts
 // 
 // $Log$
+// Revision 1.4  1998/04/28 07:22:53  sroberts
+// the sprintf of an entire file in the Write() log message was segving
+//
 // Revision 1.3  1998/04/28 01:53:13  sroberts
 // implimented read, fstat, rewinddir, lseek; seems to be a problem untaring
 // a directory tree into the virtual filesystem though, checking in anyhow
@@ -46,7 +49,8 @@ VFOcb* VFFileEntity::Open(
 	_io_open* req,
 	_io_open_reply* reply)
 {
-	VFLog(2, "VFFileEntity::Open(\"%s\")", (const char *) path);
+	VFLog(2, "VFFileEntity::Open() fd %d path \"%s\"",
+		req->fd, (const char *) path);
 
 	if(path != "")
 	{
@@ -147,7 +151,7 @@ int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
 		errno = ENOSPC;
 		return -1;
 	}
-	if(offset >= fileSize_)
+	if(offset > fileSize_)
 	{
 		// offset past end of file, so zero data up to write point
 		memset(&data_[fileSize_], 0, offset - fileSize_);
@@ -165,7 +169,7 @@ int VFFileEntity::Write(pid_t pid, size_t nbytes, off_t offset)
 
 	if(ret != -1)
 	{
-		VFLog(2, "VFFileEntity::Write() wrote \"%.*s\"", ret, &data_[offset]);
+		VFLog(5, "VFFileEntity::Write() wrote \"%.*s\"", ret, &data_[offset]);
 
 		// update sizes if end of write is past current size
 		off_t end = offset + ret;
@@ -194,7 +198,7 @@ int VFFileEntity::Read(pid_t pid, size_t nbytes, off_t offset)
 
 	if(ret != -1)
 	{
-		VFLog(2, "VFFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
+		VFLog(5, "VFFileEntity::Read() read \"%.*s\"", ret, &data_[offset]);
 	}
 
 	return ret;
