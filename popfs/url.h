@@ -3,6 +3,9 @@
 //
 // $Id$
 // $Log$
+// Revision 1.3  1999/09/19 22:22:54  sam
+// hadn't declare UrlParseAccount() inline, incorrectlyy
+//
 // Revision 1.2  1999/06/20 17:21:53  sam
 // added multiple inclusion protection
 //
@@ -13,7 +16,7 @@
 #ifndef URL_H
 #define URL_H
 
-int UrlParseAccount(char* account, char** user, char** pass, char** host)
+inline int UrlParseAccount(char* account, char** user, char** pass, char** host)
 {
 	*user = account;
 	*pass = 0;
