@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.3  1999/06/20 17:21:53  sam
+// now conduct transactions with server to prevent timeouts
+//
 // Revision 1.2  1999/06/18 14:56:03  sam
 // now download file and set stat correctly
 //
@@ -37,9 +40,7 @@
 
 #include <sys/kernel.h>
 
-#include <pop3.h>
-
-#include <vf_mgr.h>
+#include "vf_pop.h"
 #include <vf_dir.h>
 #include <vf_file.h>
 #include <vf_log.h>
@@ -58,94 +59,185 @@ PopFail(const char* cmd, pop3& pop)
 	exit(1);
 }
 
-class PopFile : public VFFileEntity
+//
+// PopFile
+//
+
+PopFile::PopFile(int msg, PopDir& pop, int size) :
+	dir_(pop), msg_(msg), data_(0)
 {
-public:
-	PopFile(int msg, pop3& pop, int size) : pop_(pop), msg_(msg), data_(0)
-	{
-		InitStat(S_IRUSR);
-		stat_.st_size = size;
-	}
+	InitStat(S_IRUSR);
+	stat_.st_size = size_ = size;
+}
 
-	~PopFile() { delete [] data_; }
+PopFile::~PopFile() { delete data_; }
 
-	Write(pid_t pid, size_t nbytes, off_t offset)
-	{
-		pid = pid; nbytes = nbytes; offset = offset;
+int PopFile::Write(pid_t pid, size_t nbytes, off_t offset)
+{
+	pid = pid; nbytes = nbytes; offset = offset;
 
-		errno = ENOTSUP;
-		return -1;
-	}
+	errno = ENOTSUP;
 
-	int Read(pid_t pid, size_t nbytes, off_t offset)
-	{
-		VFLog(2, "PopFile::Read() size %ld, offset %ld size %ld",
-			nbytes, offset, size_);
+	return -1;
+}
 
+int PopFile::Read(pid_t pid, size_t nbytes, off_t offset)
+{
+	VFLog(2, "PopFile::Read() size %ld, offset %ld size %ld",
+		nbytes, offset, size_);
+
+	if(!data_) {
+		data_ = dir_.Retr(msg_);
 		if(!data_) {
-			ostrstream mail;
-			if(pop_->retr(msg_, &mail))
-			{
-				size_ = mail.pcount();
-				data_ = mail.str();
-
-				assert(size_ == stat_.st_size);
-
-				stat_.st_size = size_;
-
-				VFLog(2, "PopFile::Read() retr msg %d size %ld", msg_, size_);
-			}
-			else
-			{
-				VFLog(1, "retr %d failed: %s", msg_, pop_->response());
-			}
+			return -1;
 		}
-
-		// adjust nbytes if the read would be past the end of file
-		if(offset > size_) {
-				nbytes = 0;
-		} else if(offset + nbytes > size_) {
-			nbytes = size_ - offset;
-		}
-
-		// ready to write nbytes from the data buffer to the offset of the
-		// "data" part of the read reply message
-		size_t dataOffset = offsetof(struct _io_read_reply, data);
-		unsigned ret = Writemsg(pid, dataOffset, &data_[offset], nbytes);
-
-		return ret;
 	}
 
-private:
-	pop3&	pop_;
-	int		msg_;
-	char*	data_;
-	int		size_;
-};
+	// adjust nbytes if the read would be past the end of file
+	if(offset > size_) {
+			nbytes = 0;
+	} else if(offset + nbytes > size_) {
+		nbytes = size_ - offset;
+	}
 
-class PopDir : public VFDirEntity
-{
-public:
-	PopDir(pop3& pop) : pop_(pop), VFDirEntity(0700)
+	char* buffer = new char[nbytes];
+
+	if(!buffer)
 	{
-		int count;
-		if(!pop_->stat(&count)) { PopFail("stat", pop_); }
+		errno = ENOMEM;
+	}
 
-		for(int msg = 1; msg <= count; ++msg) {
-			int size;
+	// these will set errno if we're using a file, if its a strstream...?
+	if(!data_->seekg(offset)) { return -1; }
+	if(!data_->read(buffer, nbytes)) { return -1; }
 
-			if(!pop_->list(msg, &size)) { PopFail("list", pop_); }
+	nbytes = data_->gcount(); // might not be nbytes...
 
-			if(!Insert(ItoA(msg), new PopFile(msg, pop_, size))) {
-				VFLog(0, "insert msg failed: [%d] %s\n", errno, strerror(errno));
-				exit(1);
-			}
+	// ready to write nbytes from the data buffer to the offset of the
+	// "data" part of the read reply message
+	size_t dataOffset = offsetof(struct _io_read_reply, data);
+	unsigned ret = Writemsg(pid, dataOffset, buffer, nbytes);
+
+	delete[] buffer;
+
+	return ret;
+}
+
+//
+// PopDir
+//
+
+PopDir::PopDir(const char* host, const char* user, const char* pass) :
+	VFDirEntity(0500),
+	host_(host),
+	user_(user),
+	pass_(pass)
+{
+	pop3 pop;
+
+	if(!Connect(pop)) { exit(1); }
+
+	int count;
+	if(!pop->stat(&count)) { PopFail("stat", pop); }
+
+	for(int msg = 1; msg <= count; ++msg) {
+		int size;
+
+		if(!pop->list(msg, &size)) { PopFail("list", pop); }
+
+		if(!Insert(ItoA(msg), new PopFile(msg, *this, size))) {
+			VFLog(0, "insert msg failed: [%d] %s\n", errno, strerror(errno));
+			Disconnect(pop); // unnecessary, but polite
+			exit(1);
 		}
 	}
 
-private:
-	pop3&	pop_;
-};
+	Disconnect(pop);
+}
+
+istream* PopDir::Retr(int msg)
+{
+	pop3 pop;
+
+	if(!Connect(pop))
+	{
+		errno = EHOSTDOWN;
+
+		return 0;
+	}
+
+	strstream* mail = new strstream;
+
+	if(!mail)
+	{
+		VFLog(0, "out of memory");
+
+		errno = ENOMEM;
+
+		goto disconnect;
+	}
+
+	if(!pop->retr(msg, mail))
+	{
+		VFLog(1, "retr %d failed: %s", msg, pop->response());
+
+		delete mail;
+
+		mail = 0;
+
+		errno = ECONNABORTED;
+
+		goto disconnect;
+	}
+
+disconnect:
+	Disconnect(pop);
+
+	return mail;
+}
+
+int PopDir::Connect(pop3& pop)
+{
+	int fail = pop->connect(host_);
+
+	if(fail) {
+		VFLog(0, "connect to %s failed: [%d] %s\n",
+			host_, fail, strerror(fail));
+		return 0;
+	}
+
+	 if(!pop->checkconnect()) {
+		VFLog(0, "connect to %s failed: %s",
+			host_, pop->response() + strlen("-ERR "));
+		return 0;
+	}
+
+	if(!pop->user(user_)) {
+		VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
+		return 0;
+	}
+
+	if(!pop->pass(pass_)) {
+		VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
+		return 0;
+	}
+
+	return 1;
+}
+
+int PopDir::Disconnect(pop3& pop)
+{
+	if(!pop->quit()) {
+		VFLog(0, "quit failed: %s", pop->response() + strlen("-ERR "));
+		return 0;
+	}
+	return 1;
+}
+
+
+//
+// server
+//
 
 #ifdef __USAGE
 %C - a POP3 virtual filesystem
@@ -224,37 +316,11 @@ void main(int argc, char* argv[])
 {
 	VFManager* vfmgr = new VFManager;
 
-	VFLevel("vf_pop3", vOpt);
+	VFLevel("vf_pop", vOpt);
 
 	GetOpts(argc, argv);
 
-	pop3 pop;
-
-	int fail = pop->connect(hostOpt);
-
-	if(fail) {
-		VFLog(0, "connect to %s failed: [%d] %s\n",
-			hostOpt, fail, strerror(fail));
-		exit(1);
-	}
-
-	 if(!pop->checkconnect()) {
-		VFLog(0, "connect to %s failed: %s",
-			hostOpt, pop->response() + strlen("-ERR "));
-		exit(1);
-	}
-
-	if(!pop->user(userOpt)) {
-		VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
-		exit(1);
-	}
-
-	if(!pop->pass(passOpt)) {
-		VFLog(0, "login failed: %s", pop->response() + strlen("-ERR "));
-		exit(1);
-	}
-
-	VFEntity* root = new PopDir(pop);
+	VFEntity* root = new PopDir(hostOpt, userOpt, passOpt);
 
 	if(!vfmgr->Init(root, pathOpt, vOpt)) {
 		VFLog(0, "init failed: [%d] %s\n", errno, strerror(errno));
