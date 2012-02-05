@@ -1,14 +1,14 @@
-Reading iomanager2, and reworking the framework to allow multi-threading
-and non-blocking generated a long list of possible changes, add them here.
 
 * Outright bugs
  - symlink paths are not being rewritten correctly: .../sl linked
    to 'dir/file' will work when in same directory as sl, not otherwise.
  - mounting inside a path on another machine fails
- - some tar files lack magic field, what to do?
+ - some tar files lack magic field, what to do? use is_tar.c
 
-* Integrate with mount utility
- x now there is a mount_[ram/tar/tgz/pop].
+* Wanted features:
+- unlink
+- pop uidl mapping/delete
+- tar ifx sucks
 
 * Testing/Benchmarking
  - Could use an app that does weird things to test the framework.
@@ -19,11 +19,6 @@ and non-blocking generated a long list of possible changes, add them here.
  - does open honor O_EXCL if O_CREAT is requested?
  - totally missing any permissions checks on anything...
  - rdonly directory attribute respected on file creation/deletion?
- x what happens when a read/write bigger than VFIoMsg can accept occurs?
-	-> FIXED
- x cannot run find on a vfsys:
-     Cannot recurse into './vf' - filesystem forms an infinite loop
-	-> FIXED problem was lack of distinct inode numbers
  - have to check eflag on an open, and reappend the trailing slash, or
    something. (why? I should explain these things to myself...)
 
@@ -33,30 +28,22 @@ and non-blocking generated a long list of possible changes, add them here.
    (such as pid and psinfo3).
  - The client info object may be a good place to put permissions checks.
 
-* Reimplement fd<->ocb mapping:
- x Use a resizable vector.
-
 * Exiting:
  - Manager::Run() could return on rmdir/normal exit to allow cleanup, way
    more obvious than ~dtor magic (the other possibility). This also
    contibutes to a bug where the team lead of a work team can't isn't killed.
+ - In general, normal exit should be done through return, NOT exit.
  - OcbMap could keep ocb count, to EBUSY rmdirs when there are active clients.
  - does deleting the manager recursively and correctly release all resources?
    No, not yet...
 
 * Implement more interfaces:
- x umount() - now causes manager to exit
  - unlink() (will need a link count in entities to support this)
  - execution (Proc uses special messages...)
  - utime()
  - chmod()
  - chown()
  - QNX Fsys directories support read(). Should I? Why? How?
-
-* Miscellany:
- x Move RAM file entity from vf_file to vf_ram.
- x Rewrite release target.
- x support sys/version message
 
 Status:
  - none
