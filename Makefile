@@ -120,13 +120,19 @@ release: docs
 	cp tgzfs/vf_tgz release/mount_tgz
 	cp popfs/vf_pop release/mount_pop
 	rm release/mount_*.usage
-	for x in release/mount_*; do wstrip $$x; done
 	use release/mount_ram > release/mount_ram.usage
 	use release/mount_pop > release/mount_pop.usage
 	use release/mount_tar > release/mount_tar.usage
 	use release/mount_tgz > release/mount_tgz.usage
+	cd release; tar -cf $(VERSION)-bin.tar mount_???
+	cd release; gzip -f $(VERSION)-bin.tar;
+	cd release; mv $(VERSION)-bin.tar.gz  $(VERSION)-bin.tgz
+	cd release; rm mount_ram mount_tar mount_tgz mount_pop
 
 # $Log$
+# Revision 1.23  2012/02/05 06:05:19  sam
+# Release target.
+#
 # Revision 1.22  2000/01/13 03:29:47  sam
 # *** empty log message ***
 #
