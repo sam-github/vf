@@ -20,6 +20,9 @@
 //  I can be contacted as sroberts@uniserve.com, or sam@cogent.ca.
 //
 // $Log$
+// Revision 1.17  2012/02/05 06:27:20  sam
+// Deal with multiple leading /.
+//
 // Revision 1.16  2000/01/13 02:30:33  sam
 // fixed usage message, and bug with absolute tar paths
 //
@@ -256,7 +259,8 @@ void main(int argc, char* argv[])
 		VFEntity* entity = factory->Create(tar);
 
 		const char* path = tar.Path();
-		if(*path == '/')
+
+		while(*path == '/')
 			path++;
 
 		int e = root->Insert(path, entity);
