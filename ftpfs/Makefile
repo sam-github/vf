@@ -1,9 +1,9 @@
 # Makefile:
 # $Id$
 
-CXXFLAGS = -w2 -g -I.. #-T1 # privity 1 to make kernel calls __get_fd,__init_fd
+CXXFLAGS = -w2 -g -I.. -T1 -I/usr/local/include
 OFLAGS   = -O
-LDFLAGS  = -M $(CXXFLAGS) -l vf.lib -l vf_ftp.lib -lsocket++ -L..
+LDFLAGS  = -M $(CXXFLAGS) -l vf.lib -l vf_ftp.lib -lsocket++ -L.. -L/usr/local/lib
 
 INC = 
 SRC = $(wildcard *.cc *.c)
@@ -33,7 +33,7 @@ $(OBJ): $(INC)
 deps: $(DEP)
 
 $(DEP): $(SRC) $(INC)
-	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $@
+	@makedeps -f - -- $(CXXFLAGS) -- $(SRC) > $@
 
 clean:
 	rm -f *.o *.err core *.dmp *.log
@@ -78,6 +78,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.3  2012/02/05 06:08:09  sam
+# ftp file system
+#
 # Revision 1.2  1999/10/11 14:58:54  sam
 # doesn't make deps automatically anymore    e
 #
