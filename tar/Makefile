@@ -1,7 +1,7 @@
 # Makefile:
 # $Id$
 
-TAR = test/file.tar.gz
+TAR = test/dir.tar
 TARFLAGS = -g
 
 CXXFLAGS	= -w2 $(OFLAGS)
@@ -16,6 +16,8 @@ EXE = untar
 LIB = 
 DEP = depends.mak
 ALL = $(EXE)
+
+.PHONY: all deps clean empty test l x ldebug xdebug stop
 
 # default target
 all: $(ALL)
@@ -40,6 +42,16 @@ empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort $(DEP)
 
 # development targets
+
+test: untar
+	untar -x -g $(TAR)
+	untar -x -g $(TAR).gz
+	untar -x -g $(TAR).F
+	untar -x -t $(TAR)
+	untar -l -c $(TAR)
+	untar -l -z $(TAR).gz
+	untar -l -f $(TAR).F
+	untar -x -F fcat $(TAR).F
 
 l: stop untar
 	untar -vv -l $(TAR)
@@ -79,6 +91,8 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.2  2012/02/05 06:31:31  sam
+# unit tests
+#
 # Revision 1.1  1999/11/24 03:43:12  sam
 # Initial revision
-#
