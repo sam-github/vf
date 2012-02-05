@@ -44,16 +44,16 @@ empty: clean
 # development targets
 
 run: stop vf_tgz
-	vf_tgz $(TARFLAGS) $(TAR) &
+	vf_tgz $(TARFLAGS) $(TAR)
 
 loud: stop vf_tgz
-	vf_tgz $(TARFLAGS) -v $(TAR) &
+	vf_tgz $(TARFLAGS) -v $(TAR)
 
 noisy: stop vf_tgz
-	vf_tgz $(TARFLAGS) -vv $(TAR) &
+	vf_tgz $(TARFLAGS) -vv $(TAR)
 
 debug: stop vf_tgz
-	wd vf_tgz $(TARFLAGS) -d -vvvv $(TAR) &
+	wd vf_tgz $(TARFLAGS) -d -vvvv $(TAR)
 
 stop:
 	-slay -f vf_tgz || true
@@ -81,6 +81,9 @@ stop:
 	chmod u+s $@
 
 # $Log$
+# Revision 1.2  2012/02/05 06:29:01  sam
+# don't background, vr_tgz now daemonizes
+#
 # Revision 1.1  1999/11/24 03:54:01  sam
 # Initial revision
 #
