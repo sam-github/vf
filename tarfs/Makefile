@@ -2,18 +2,18 @@
 # $Id$
 
 TAR = test/mc-4.5.9.tar
-TARFLAGS = -e
+TARFLAGS = 
 
-CXXFLAGS	= -w2 -I.. $(OFLAGS)
+CXXFLAGS	= -w2 -I.. $(OFLAGS) -I /usr/local/include
 OFLAGS		= -O -g
 LDFLAGS		= -T1 -M $(OFLAGS)
-LDLIBS		= -L.. -ltarfs -lvf
+LDLIBS		= #-lsocket++ -L /usr/local/lib
 
 INC = 
 SRC = $(wildcard *.cc)
 OBJ = vf_tarfile.o
-EXE = tart vf_tar
-LIB = tarfs.lib
+EXE = vf_tar
+LIB = 
 DEP = depends.mak
 ALL = $(LIB) $(EXE)
 
@@ -23,22 +23,17 @@ all: $(ALL)
 # custom targets
 
 # special targets
-$(LIB): $(OBJ)
-	wlib -n -q -b $@ $^
-
-$(EXE): $(LIB) ../vf.lib
-
-$(OBJ): $(INC)
+$(EXE): $(OBJ) ../vf.lib
 
 # standard targets
 
 -include $(DEP)
 
 deps:
-	@makedeps -f - -I /usr/local/include -- $(CXXFLAGS) -- $(SRC) > $(DEP)
+	@makedepend -f - -- $(CXXFLAGS) -- $(SRC) > $(DEP)
 
 clean:
-	rm -f *.o *.err core *.dmp *.log
+	rm -f *.o *.err core *.dmp *.log *.map *.map.sort
 
 empty: clean
 	rm -f $(ALL) *.dbg *.map *.map.sort $(DEP)
@@ -46,40 +41,46 @@ empty: clean
 # development targets
 
 run: stop vf_tar
-	vf_tar $(TARFLAGS) -v $(TAR) &
+	vf_tar $(TARFLAGS) $(TAR)
+
+loud: stop vf_tar
+	vf_tar $(TARFLAGS) -v $(TAR)
 
 noisy: stop vf_tar
-	vf_tar $(TARFLAGS) -vvv $(TAR) &
+	vf_tar $(TARFLAGS) -vvv $(TAR)
 
 debug: stop vf_tar
-	wd vf_tar $(TARFLAGS) -vvvv $(TAR) &
+	wd vf_tar $(TARFLAGS) -vvvv $(TAR) -d &
 
 stop:
 	-slay -f vf_tar || true
 
 # rule forcing run of usemsg after linking
 %: %.o
-	$(LINK.o) -o $@ $< $(LDLIBS)
+	$(LINK.o) -o $@ $^ $(LDLIBS)
 	-usemsg -c $@ $@.c*
 	chown root $@
 	chmod u+s $@
 	-sort $@.map > $@.map.sort
 
 %: %.c
-	$(LINK.c) -o $@ $< $(LDLIBS)
+	$(LINK.c) -o $@ $^ $(LDLIBS)
 	$(RM) $@.o
 	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
 %: %.cc
-	$(LINK.cc) -o $@ $< $(LDLIBS)
+	$(LINK.cc) -o $@ $^ $(LDLIBS)
 	$(RM) $@.o
 	-usemsg -c $@ $<
 	chown root $@
 	chmod u+s $@
 
 # $Log$
+# Revision 1.7  2012/02/05 06:27:36  sam
+# increase verbosity and other tweeks
+#
 # Revision 1.6  1999/07/21 13:44:02  sam
 # usemsg was missing -c option
 #
