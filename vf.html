@@ -1,0 +1,212 @@
+<HTML>
+<HEAD>
+<TITLE>A C++ Framework for QNX Virtual Filesystems</TITLE>
+<LINK REV="made" HREF="mailto:nort@bottesini.arp.harvard.edu">
+</HEAD>
+
+<BODY>
+
+<!-- INDEX BEGIN -->
+
+<UL>
+
+	<LI><A HREF="#A_C_Framework_for_QNX_Virtual_">A C++ Framework for QNX Virtual Filesystems</A>
+	<UL>
+
+		<LI><A HREF="#Code">Code</A>
+		<LI><A HREF="#Comments">Comments</A>
+		<LI><A HREF="#Caveats">Caveats</A>
+		<LI><A HREF="#Background">Background</A>
+	</UL>
+
+</UL>
+<!-- INDEX END -->
+
+<HR>
+<P>
+<H1><A NAME="A_C_Framework_for_QNX_Virtual_">A C++ Framework for QNX Virtual Filesystems</A></H1>
+<P>
+<HR>
+<H2><A NAME="Code">Code</A></H2>
+<P>
+The latest source for the virtual filesystems can be downloaded from my
+home page, <A HREF="http://www.emyr.net/Sam">here</A>. You'll also need socket++ to compile the pop3 filesystem, also available
+from my home page.
+
+<P>
+This code is distributed under the GNU General Public Licence. I was going
+to distribute it under the library licence, but I can't find a copy on my
+machine. If the GPL's a problem for anybody, contact me, I could put it
+under the library licence.
+
+<P>
+<HR>
+<H2><A NAME="Comments">Comments</A></H2>
+<P>
+In the process of writing QNX4 resource managers it becomes clear that a
+substantial amount of the code, especially for virtual filesystems, is very
+generic and reusable. This has been recognized by QSSL, and their newest
+version of QNX4, Neutrino, has incorporated a common framework to handle
+this generic functionality. This is supposed to substantially reduce the
+cut-and-paste coding in writing a resource manager, as well as contribute
+to Neutrinos small memory footprint.
+
+<P>
+However, I'm not using Neutrino.
+
+<P>
+Since the effort involved in implementing a virtual filesystem is
+considerable, I think it has remained a moderately arcane area. It was also
+getting in the way of me moving past the QNX mechanics and getting to what
+I really wanted to do: write an ftp or html filesystem. So, as a first
+step, I wrote a prototype of a virtual filesystem framework in C++, and
+implemented a RAM filesystem in the process since it seemed a good test
+case.
+
+<P>
+I've only recently discovered that QSSL has published a much better example
+of writing a virtual filesystem than they used to have, and that the
+example comes in the form of a framework, see <A HREF="ftp://ftp.qnx.com/usr/free/qnx4/os/samples/misc/iomanager2.tgz">iomanager2</A>. My framework is surprisingly similar, but does some things theirs
+doesn't. I've read theirs and merged some of the useful ideas into mine.
+
+<P>
+As a next step I decided to tackle a Tar filesystem, a resource manager
+that would give a (read-only) filesystem-like interface to a tar file, one
+that you can cd into, then view a file with less or vi, etc. This is now
+done, and I've also implemented support for compressed tar files, and
+integration into the mount command (so you can do a 'mount -t tgz
+hello-1.2.tgz /src/hello').
+
+<P>
+My next goal was going to be an ftp filesystem, based on the ftp support
+that already exists in the <A HREF="http://www.emyr.net/Sam/socket++.html">socket++</A> library. However, that requires changes to the ftp support in socket++ to
+make it more useable, so I implemented a pop3 filesystem instead. It
+presents a pop3 e-mail account as a virtual filesystem, allowing you to
+read your pop3 mail with your favorite text editor.
+
+<P>
+<HR>
+<H2><A NAME="Caveats">Caveats</A></H2>
+<P>
+This is my code, I wrote it for free, I did it because I thought it was
+pretty interesting, and you can use it freely (under the terms of the GPL).
+It is not, however, production code. It works well enough to play with, and
+if you find it useful I'd be very pleased. If anybody has any comments,
+questions, encounters any problems, etc., please feel free to contact <A HREF="mailto:sroberts@uniserve.com">me</A>, I'd like to help.
+
+<P>
+Here's some of the problems that I'm aware of:
+
+<UL>
+<LI>
+<P>
+Its pretty likely that there are some QNX messages that I'm not dealing
+with correctly, if anybody sees anything strange I'd like to hear about it.
+
+<LI>
+<P>
+The framework makes <EM>absolutely no</EM> attempt to do the uid/gid permissions checking that any production manager
+should. It'll be easy to do, I just haven't got around to it yet since I
+haven't needed to.
+
+<LI>
+<P>
+While all the messages needed for directory navigation and editing of a
+file are supported, as well as creating files/directories/symbolic links,
+there are still missing messages. You can't, for example, execute a file
+from the virtual filesystem (currently).
+
+<LI>
+<P>
+Tar file formats are a standard that isn't, and I'd be interested in
+hearing if anybody finds a tar file that the tar archive class can't deal
+with. Its also not clear what to do with absolute paths in tar archives,
+particularly when mixed with relative paths, and in archived symbolic
+links. See the usage message for vf_tar for details.
+
+<LI>
+<P>
+While I tried to respond to messages as efficiently as possible, in other
+areas I don't try to be efficient at all. I use a pretty unoptimized string
+class for a few things, and the RAM filesystem uses <CODE>malloc()</CODE>
+and <CODE>realloc()</CODE> pretty freely to allocate space for new files. I
+traded off speed for flexibility when necessary.
+
+<LI>
+<P>
+On the other hand, one thing I did <EM>not</EM> do is attempt to hide how QNX or resource managers work by using C++ to
+obfuscate away from the system. I think the resulting code is fairly clear
+to somebody who knows how resource managers work, but I wrote it, your
+mileage will vary.
+
+<LI>
+<P>
+There's a few install notes, and the executables all have usage messages,
+but that's about the extent of the documentation. That's probably going to
+remain the extent as well, unless there's some kind of public outcry, I'm
+not holding by breath...
+
+</UL>
+<P>
+<HR>
+<H2><A NAME="Background">Background</A></H2>
+<P>
+For the last few years I've worked primarily with <A HREF="http://www.qnx.com">QNX4</A>. One of the most interesting things about QNX is the ability to write a
+resource manager capable of taking over a prefix in the pathname space
+(such as <EM>/dev</EM>) and responding to the file oriented Unix system calls, such as
+<CODE>open(),</CODE> <CODE>read(),</CODE> <CODE>write(),</CODE>
+<CODE>readdir(),</CODE> <CODE>stat(),</CODE> <CODE>chdir(),</CODE> etc. In
+QNX, all API's that operate on a path, or on the file descriptor returned
+by opening a path, are implemented using resource managers. Mostly these
+resource managers are used to implement mountable file systems, or fairly
+generic Unix block and character-oriented device drivers in <EM>/dev/</EM>. Exceptions are the message queue server, which offers the POSIX.4
+``mq_*'' API as well as a filesystem interface, and the QNX print spoolers,
+which offer a filesystem interface under the (virtual)
+<EM>/dev/spool</EM> directory as well as the more traditional ``lp*'' commands.
+
+<P>
+An interesting possibility is to write resource managers that allow an
+interface to other, less traditional, functionality.
+
+<P>
+One example of this is a resource manager that behaves as a single file,
+but where the contents are different each time the file is read,
+dynamically chosen from an index file. An implementation of this for QNX is
+available from <A HREF="ftp://ftp.astra.mb.ca/pub/QuoteSrv">Astra</A>, binary only. Its a handy way of having a <EM>.signature</EM> that changes each time it is read.
+
+<P>
+Another, less playful, example is the networking API in the <A HREF="http://www.cornfed.com/roadrunner">RoadRunner</A> operating system. In this OS, opening a tcp connection is accomplished by
+doing an open on a path such as
+<EM>/net/tcp/192.168.3.9/80</EM>, which would open a connection to port 80 on the specified server. I can't
+link directly to the pertinent page, so follow
+Documentation&gt;&gt;html&gt;&gt;Tcp File System.
+
+<P>
+The power of this is in the simplification of APIs, and the unification of
+diverse interfaces, already a strength of the Unix I/O architecture in
+which as many system resources as possible are presented as ``files''. When
+an <CODE>open()</CODE> can be called on any resource, you don't have to
+code your application to deal specifically with those kinds of resources.
+For instance, you could write a framegrabber driver where every time you
+read it you read the current bitmap. Then you could write another manager
+that every time it was read it read the current bitmap, and converted it to
+a gif on the fly. Instant image capture on your web page, if you have an
+inline link to that pseudo file.
+
+<P>
+The point isn't so much that <CODE>open()</CODE> and <CODE>read()</CODE>
+are intrinsically easier to use than a custom API, such as
+<CODE>frame_read(),</CODE> <CODE>frame_to_gif(),</CODE> etc., as that
+applications don't have to know about your cutom API to use the resource;
+what's the chance that Apache will have that frame grabber API built in? Or
+that vmail will, when you try to send the current image as an attached gif?
+
+<P>
+Another interesting OS is the FSF's <A HREF="http://www.gnu.org/software/hurd">HURD</A>, which is advertised to use the underlying Mach OS's message passing to
+implement resource managers for things such as a virtual filesystem for
+easy access to ftp servers. I'm still waiting for the promised Debian
+GNU/HURD to see how well it works, but I'm getting impatient...
+
+</BODY>
+
+</HTML>
