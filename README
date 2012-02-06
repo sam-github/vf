@@ -2,7 +2,7 @@ This is a collection of QNX4 virtual filesystems, and a framework
 to implement them. It's a hobby and experiment of mine, and I'd be
 interested in any comments or feedback.
 
-See the notes in vf.txt, or vf.html.
+See the notes at http://sam-github.github.com/vf
 
 To build, do a 'make build'. Each sub-directory contains one of the vfs'.
 
@@ -11,5 +11,5 @@ To install, do a 'make install'.
 If this doesn't work for you, the makefiles are quite simple,
 and please e-mail me about any problems you have!
 
-  sroberts@uniserve.com
+  vieuxtech@gmail.com
 
